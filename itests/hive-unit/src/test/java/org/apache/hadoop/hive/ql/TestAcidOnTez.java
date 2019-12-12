@@ -19,17 +19,23 @@
 package org.apache.hadoop.hive.ql;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileUtil;
+import org.apache.hadoop.fs.LocatedFileStatus;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.RemoteIterator;
 import org.apache.hadoop.hive.common.FileUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
@@ -46,9 +52,12 @@ import org.apache.hadoop.hive.metastore.txn.TxnUtils;
 import org.apache.hadoop.hive.ql.exec.AbstractFileMergeOperator;
 import org.apache.hadoop.hive.ql.io.BucketCodec;
 import org.apache.hadoop.hive.ql.io.HiveInputFormat;
+import org.apache.hadoop.hive.ql.io.orc.OrcFile;
+import org.apache.hadoop.hive.ql.io.orc.OrcInputFormat;
+import org.apache.hadoop.hive.ql.io.orc.Reader;
 import org.apache.hadoop.hive.ql.lockmgr.TestDbTxnManager2;
-import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
 import org.apache.hadoop.hive.ql.session.SessionState;
+import org.apache.orc.OrcProto;
 import org.apache.tez.mapreduce.hadoop.MRJobConfig;
 import org.junit.After;
 import org.junit.Assert;
@@ -121,10 +130,15 @@ public class TestAcidOnTez {
     SessionState.start(new SessionState(hiveConf));
     d = DriverFactory.newDriver(hiveConf);
     dropTables();
-    runStatementOnDriver("create table " + Table.ACIDTBL + "(a int, b int) clustered by (a) into " + BUCKET_COUNT + " buckets stored as orc " + getTblProperties());
-    runStatementOnDriver("create table " + Table.ACIDTBLPART + "(a int, b int) partitioned by (p string) clustered by (a) into " + BUCKET_COUNT + " buckets stored as orc " + getTblProperties());
-    runStatementOnDriver("create table " + Table.NONACIDORCTBL + "(a int, b int) clustered by (a) into " + BUCKET_COUNT + " buckets stored as orc ");
-    runStatementOnDriver("create table " + Table.NONACIDPART + "(a int, b int) partitioned by (p string) stored as orc ");
+    runStatementOnDriver("create table " + Table.ACIDTBL + "(a int, b int) clustered by (a) into " + BUCKET_COUNT
+        + " buckets stored as orc " + getTblProperties());
+    runStatementOnDriver("create table " + Table.ACIDTBLPART
+        + "(a int, b int) partitioned by (p string) clustered by (a) into " + BUCKET_COUNT + " buckets stored as orc "
+        + getTblProperties());
+    runStatementOnDriver("create table " + Table.NONACIDORCTBL + "(a int, b int) clustered by (a) into " + BUCKET_COUNT
+        + " buckets stored as orc ");
+    runStatementOnDriver("create table " + Table.NONACIDPART
+        + "(a int, b int) partitioned by (p string) stored as orc ");
     runStatementOnDriver("insert into " + Table.ACIDTBL + "(a,b) values(1,2)");
     runStatementOnDriver("insert into " + Table.ACIDTBL + "(a,b) values(3,4)");
     runStatementOnDriver("insert into " + Table.ACIDTBL + "(a,b) values(5,6)");
@@ -636,7 +650,6 @@ ekoifman:apache-hive-3.0.0-SNAPSHOT-bin ekoifman$ tree  ~/dev/hiverwgit/itests/h
   public void testAcidInsertWithRemoveUnion() throws Exception {
     HiveConf confForTez = new HiveConf(hiveConf); // make a clone of existing hive conf
     setupTez(confForTez);
-    int[][] values = {{1,2},{3,4},{5,6},{7,8},{9,10}};
     runStatementOnDriver("drop table if exists T", confForTez);
     runStatementOnDriver("create table T (a int, b int) stored as ORC  TBLPROPERTIES ('transactional'='true')", confForTez);
     /*On Tez, below (T is transactional), we get the following layout
@@ -715,9 +728,9 @@ ekoifman:apache-hive-3.0.0-SNAPSHOT-bin ekoifman$ tree  ~/dev/hiverwgit/itests/h
     String[][] expected2 = {
       {"{\"writeid\":1,\"bucketid\":536936448,\"rowid\":0}\t1\t2", "warehouse/t/delta_0000001_0000001_0000/bucket_00001"},
       {"{\"writeid\":1,\"bucketid\":536870912,\"rowid\":0}\t2\t4", "warehouse/t/delta_0000001_0000001_0000/bucket_00000"},
-      {"{\"writeid\":1,\"bucketid\":536936448,\"rowid\":2}\t5\t6", "warehouse/t/delta_0000001_0000001_0000/bucket_00001"},
+      {"{\"writeid\":1,\"bucketid\":536936448,\"rowid\":1}\t5\t6", "warehouse/t/delta_0000001_0000001_0000/bucket_00001"},
       {"{\"writeid\":1,\"bucketid\":536870912,\"rowid\":1}\t6\t8", "warehouse/t/delta_0000001_0000001_0000/bucket_00000"},
-      {"{\"writeid\":1,\"bucketid\":536936448,\"rowid\":1}\t9\t10", "warehouse/t/delta_0000001_0000001_0000/bucket_00001"}
+      {"{\"writeid\":1,\"bucketid\":536936448,\"rowid\":2}\t9\t10", "warehouse/t/delta_0000001_0000001_0000/bucket_00001"}
     };
     Assert.assertEquals("Unexpected row count", expected2.length, rs.size());
     for(int i = 0; i < expected2.length; i++) {
@@ -831,6 +844,76 @@ ekoifman:apache-hive-3.0.0-SNAPSHOT-bin ekoifman$ tree  ~/dev/hiverwgit/itests/h
     // No transactions - just the header row
     assertEquals(1, rows.size());
   }
+ 
+  /**
+   * HIVE-20699
+   *
+   * see TestTxnCommands3.testCompactor
+   */
+  @Test
+  public void testCrudMajorCompactionSplitGrouper() throws Exception {
+    String tblName = "test_split_grouper";
+    // make a clone of existing hive conf
+    HiveConf confForTez = new HiveConf(hiveConf);
+    setupTez(confForTez); // one-time setup to make query able to run with Tez
+    HiveConf.setVar(confForTez, HiveConf.ConfVars.HIVEFETCHTASKCONVERSION, "none");
+    runStatementOnDriver("create transactional table " + tblName + " (a int, b int) clustered by (a) into 2 buckets "
+        + "stored as ORC TBLPROPERTIES('bucketing_version'='2', 'transactional'='true',"
+        + " 'transactional_properties'='default')", confForTez);
+    runStatementOnDriver("insert into " + tblName + " values(1,2),(1,3),(1,4),(2,2),(2,3),(2,4)", confForTez);
+    runStatementOnDriver("insert into " + tblName + " values(3,2),(3,3),(3,4),(4,2),(4,3),(4,4)", confForTez);
+    runStatementOnDriver("delete from " + tblName + " where b = 2");
+    List<String> expectedRs = new ArrayList<>();
+    expectedRs.add("{\"writeid\":1,\"bucketid\":536870912,\"rowid\":1}\t2\t3");
+    expectedRs.add("{\"writeid\":1,\"bucketid\":536870912,\"rowid\":2}\t2\t4");
+    expectedRs.add("{\"writeid\":2,\"bucketid\":536870912,\"rowid\":1}\t3\t3");
+    expectedRs.add("{\"writeid\":2,\"bucketid\":536870912,\"rowid\":2}\t3\t4");
+    expectedRs.add("{\"writeid\":1,\"bucketid\":536936448,\"rowid\":1}\t1\t3");
+    expectedRs.add("{\"writeid\":1,\"bucketid\":536936448,\"rowid\":2}\t1\t4");
+    expectedRs.add("{\"writeid\":2,\"bucketid\":536936448,\"rowid\":1}\t4\t3");
+    expectedRs.add("{\"writeid\":2,\"bucketid\":536936448,\"rowid\":2}\t4\t4");
+    List<String> rs =
+        runStatementOnDriver("select ROW__ID, * from " + tblName + " order by ROW__ID.bucketid, ROW__ID", confForTez);
+    HiveConf.setVar(confForTez, HiveConf.ConfVars.SPLIT_GROUPING_MODE, "compactor");
+    // No order by needed: this should use the compactor split grouping to return the rows in correct order
+    List<String> rsCompact = runStatementOnDriver("select ROW__ID, * from  " + tblName, confForTez);
+    Assert.assertEquals("normal read", expectedRs, rs);
+    Assert.assertEquals("compacted read", rs, rsCompact);
+  }
+
+  /**
+   * Tests the OrcInputFormat.isOrignal method for files in ACID and Non-ACID tables.
+   * @throws IOException If there is a file reading error
+   */
+  @Test
+  public void testIsOriginal() throws IOException {
+    assertIsOriginal(new Path(TEST_WAREHOUSE_DIR, Table.ACIDTBL.toString().toLowerCase()), false);
+    assertIsOriginal(new Path(TEST_WAREHOUSE_DIR, Table.NONACIDORCTBL.toString().toLowerCase()), true);
+  }
+
+  /**
+   * Checks if the file format is original or ACID file based on OrcInputFormat static methods.
+   * @param path The file to check
+   * @param expected The expected result of the isOriginal
+   * @throws IOException Error when reading the file
+   */
+  private void assertIsOriginal(Path path, boolean expected) throws FileNotFoundException, IOException {
+    FileSystem fs = FileSystem.get(hiveConf);
+    RemoteIterator<LocatedFileStatus> lfs = fs.listFiles(path, true);
+    boolean foundAnyFile = false;
+    while (lfs.hasNext()) {
+      LocatedFileStatus lf = lfs.next();
+      Path file = lf.getPath();
+      if (!file.getName().startsWith(".") && !file.getName().startsWith("_")) {
+        Reader reader = OrcFile.createReader(file, OrcFile.readerOptions(new Configuration()));
+        OrcProto.Footer footer = reader.getFileTail().getFooter();
+        assertEquals("Reader based original check", expected, OrcInputFormat.isOriginal(reader));
+        assertEquals("Footer based original check", expected, OrcInputFormat.isOriginal(footer));
+        foundAnyFile = true;
+      }
+    }
+    assertTrue("Checking if any file found to check", foundAnyFile);
+  }
 
   private void restartSessionAndDriver(HiveConf conf) throws Exception {
     SessionState ss = SessionState.get();
@@ -910,11 +993,16 @@ ekoifman:apache-hive-3.0.0-SNAPSHOT-bin ekoifman$ tree  ~/dev/hiverwgit/itests/h
   private void setupTez(HiveConf conf) {
     conf.setVar(HiveConf.ConfVars.HIVE_EXECUTION_ENGINE, "tez");
     conf.setVar(HiveConf.ConfVars.HIVE_USER_INSTALL_DIR, TEST_DATA_DIR);
+    conf.set("tez.am.resource.memory.mb", "128");
+    conf.set("tez.am.dag.scheduler.class", "org.apache.tez.dag.app.dag.impl.DAGSchedulerNaturalOrderControlled");
     conf.setBoolean("tez.local.mode", true);
     conf.set("fs.defaultFS", "file:///");
     conf.setBoolean("tez.runtime.optimize.local.fetch", true);
     conf.set("tez.staging-dir", TEST_DATA_DIR);
     conf.setBoolean("tez.ignore.lib.uris", true);
+    conf.set("hive.tez.container.size", "128");
+    conf.setBoolean("hive.merge.tezfiles", false); 
+    conf.setBoolean("hive.in.tez.test", true);
   }
 
   private void setupMapJoin(HiveConf conf) {
@@ -924,10 +1012,7 @@ ekoifman:apache-hive-3.0.0-SNAPSHOT-bin ekoifman$ tree  ~/dev/hiverwgit/itests/h
   }
 
   private List<String> runStatementOnDriver(String stmt) throws Exception {
-    CommandProcessorResponse cpr = d.run(stmt);
-    if(cpr.getResponseCode() != 0) {
-      throw new RuntimeException(stmt + " failed: " + cpr);
-    }
+    d.run(stmt);
     List<String> rs = new ArrayList<String>();
     d.getResults(rs);
     return rs;
@@ -940,10 +1025,7 @@ ekoifman:apache-hive-3.0.0-SNAPSHOT-bin ekoifman$ tree  ~/dev/hiverwgit/itests/h
       throws Exception {
     IDriver driver = DriverFactory.newDriver(conf);
     driver.setMaxRows(10000);
-    CommandProcessorResponse cpr = driver.run(stmt);
-    if(cpr.getResponseCode() != 0) {
-      throw new RuntimeException(stmt + " failed: " + cpr);
-    }
+    driver.run(stmt);
     List<String> rs = new ArrayList<String>();
     driver.getResults(rs);
     return rs;

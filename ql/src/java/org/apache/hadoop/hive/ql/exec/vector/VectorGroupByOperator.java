@@ -196,6 +196,11 @@ public class VectorGroupByOperator extends Operator<GroupByDesc>
 
         doProcessBatch(batch, (i == 0), allGroupingSetsOverrideIsNulls[i]);
       }
+
+      if (this instanceof ProcessingModeHashAggregate) {
+        // Check if we should turn into streaming mode
+        ((ProcessingModeHashAggregate)this).checkHashModeEfficiency();
+      }
     }
 
     /**
@@ -363,11 +368,9 @@ public class VectorGroupByOperator extends Operator<GroupByDesc>
         this.checkInterval = HiveConf.getIntVar(hconf,
           HiveConf.ConfVars.HIVE_VECTORIZATION_GROUPBY_CHECKINTERVAL);
         this.maxHtEntries = HiveConf.getIntVar(hconf,
-            HiveConf.ConfVars.HIVE_VECTORIZATION_GROUPBY_MAXENTRIES);
-        this.minReductionHashAggr = HiveConf.getFloatVar(hconf,
-            HiveConf.ConfVars.HIVEMAPAGGRHASHMINREDUCTION);
-          this.numRowsCompareHashAggr = HiveConf.getIntVar(hconf,
-            HiveConf.ConfVars.HIVEGROUPBYMAPINTERVAL);
+          HiveConf.ConfVars.HIVE_VECTORIZATION_GROUPBY_MAXENTRIES);
+        this.numRowsCompareHashAggr = HiveConf.getIntVar(hconf,
+          HiveConf.ConfVars.HIVEGROUPBYMAPINTERVAL);
       }
       else {
         this.percentEntriesToFlush =
@@ -376,11 +379,11 @@ public class VectorGroupByOperator extends Operator<GroupByDesc>
             HiveConf.ConfVars.HIVE_VECTORIZATION_GROUPBY_CHECKINTERVAL.defaultIntVal;
         this.maxHtEntries =
             HiveConf.ConfVars.HIVE_VECTORIZATION_GROUPBY_MAXENTRIES.defaultIntVal;
-        this.minReductionHashAggr =
-            HiveConf.ConfVars.HIVEMAPAGGRHASHMINREDUCTION.defaultFloatVal;
-          this.numRowsCompareHashAggr =
+        this.numRowsCompareHashAggr =
             HiveConf.ConfVars.HIVEGROUPBYMAPINTERVAL.defaultIntVal;
       }
+
+      minReductionHashAggr = getConf().getMinReductionHashAggr();
 
       sumBatchSize = 0;
 
@@ -445,9 +448,6 @@ public class VectorGroupByOperator extends Operator<GroupByDesc>
 
       sumBatchSize += batch.size;
       lastModeCheckRowCount += batch.size;
-
-      // Check if we should turn into streaming mode
-      checkHashModeEfficiency();
     }
 
     @Override
@@ -982,7 +982,7 @@ public class VectorGroupByOperator extends Operator<GroupByDesc>
   protected void initializeOp(Configuration hconf) throws HiveException {
     super.initializeOp(hconf);
     isLlap = LlapProxy.isDaemon();
-    VectorExpression.doTransientInit(keyExpressions);
+    VectorExpression.doTransientInit(keyExpressions, hconf);
 
     List<ObjectInspector> objectInspectors = new ArrayList<ObjectInspector>();
 
@@ -1021,7 +1021,7 @@ public class VectorGroupByOperator extends Operator<GroupByDesc>
            throw new HiveException("Failed to create " + vecAggrClass.getSimpleName() +
                "(VectorAggregationDesc) object ", e);
         }
-        VectorExpression.doTransientInit(vecAggrExpr.getInputExpression());
+        VectorExpression.doTransientInit(vecAggrExpr.getInputExpression(), hconf);
         aggregators[i] = vecAggrExpr;
 
         ObjectInspector objInsp =

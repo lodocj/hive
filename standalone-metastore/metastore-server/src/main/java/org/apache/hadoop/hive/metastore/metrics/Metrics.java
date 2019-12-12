@@ -17,13 +17,25 @@
  */
 package org.apache.hadoop.hive.metastore.metrics;
 
+import java.lang.management.ManagementFactory;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import com.codahale.metrics.ConsoleReporter;
 import com.codahale.metrics.Counter;
 import com.codahale.metrics.Gauge;
 import com.codahale.metrics.JmxReporter;
+import com.codahale.metrics.Metric;
 import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.MetricSet;
 import com.codahale.metrics.Reporter;
 import com.codahale.metrics.ScheduledReporter;
+import com.codahale.metrics.Slf4jReporter;
+import com.codahale.metrics.Slf4jReporter.LoggingLevel;
 import com.codahale.metrics.Timer;
 import com.codahale.metrics.jvm.BufferPoolMetricSet;
 import com.codahale.metrics.jvm.ClassLoadingGaugeSet;
@@ -38,19 +50,12 @@ import org.apache.hadoop.metrics2.lib.DefaultMetricsSystem;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.lang.management.ManagementFactory;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-
 public class Metrics {
   private static final Logger LOGGER = LoggerFactory.getLogger(Metrics.class);
 
   private static Metrics self;
   private static final AtomicInteger singletonAtomicInteger = new AtomicInteger();
+  private static final Counter dummyCounter = new Counter();
 
   private final MetricRegistry registry;
   private List<Reporter> reporters;
@@ -89,7 +94,7 @@ public class Metrics {
    * metrics have not been initialized.
    */
   public static Counter getOrCreateCounter(String name) {
-    if (self == null) return null;
+    if (self == null) return dummyCounter;
     Map<String, Counter> counters = self.registry.getCounters();
     Counter counter = counters.get(name);
     if (counter != null) return counter;
@@ -151,6 +156,10 @@ public class Metrics {
     }
   }
 
+  public static Counter getOpenConnectionsCounter() {
+    return getOrCreateCounter(MetricsConstants.OPEN_CONNECTIONS);
+  }
+
   @VisibleForTesting
   static List<Reporter> getReporters() {
     return self.reporters;
@@ -159,11 +168,13 @@ public class Metrics {
   private Metrics(Configuration conf) {
     registry = new MetricRegistry();
 
-    registry.registerAll(new GarbageCollectorMetricSet());
-    registry.registerAll(new BufferPoolMetricSet(ManagementFactory.getPlatformMBeanServer()));
-    registry.registerAll(new MemoryUsageGaugeSet());
-    registry.registerAll(new ThreadStatesGaugeSet());
-    registry.registerAll(new ClassLoadingGaugeSet());
+    // this is the same logic as implemented in CodahaleMetrics in hive-common package,
+    // but standalone-metastore project doesn't depend on that
+    registerAll("gc", new GarbageCollectorMetricSet());
+    registerAll("buffers", new BufferPoolMetricSet(ManagementFactory.getPlatformMBeanServer()));
+    registerAll("memory", new MemoryUsageGaugeSet());
+    registerAll("threads", new ThreadStatesGaugeSet());
+    registerAll("classLoading", new ClassLoadingGaugeSet());
 
     /*
      * This is little complicated.  First we look for our own config values on this.  If those
@@ -230,6 +241,18 @@ public class Metrics {
           reporters.add(reporter);
           scheduledReporters.add(reporter);
           hadoopMetricsStarted = true;
+        } else if (reporterName.startsWith("slf4j")) {
+          final String level = MetastoreConf.getVar(conf, MetastoreConf.ConfVars.METRICS_SLF4J_LOG_LEVEL);
+          final Slf4jReporter reporter = Slf4jReporter.forRegistry(registry)
+              .outputTo(LOGGER)
+              .convertRatesTo(TimeUnit.SECONDS)
+              .convertDurationsTo(TimeUnit.MILLISECONDS)
+              .withLoggingLevel(LoggingLevel.valueOf(level))
+              .build();
+          reporter.start(MetastoreConf.getTimeVar(conf,
+              MetastoreConf.ConfVars.METRICS_SLF4J_LOG_FREQUENCY_MINS, TimeUnit.SECONDS), TimeUnit.SECONDS);
+          reporters.add(reporter);
+          scheduledReporters.add(reporter);
         } else {
           throw new RuntimeException("Unknown metric type " + reporterName);
         }
@@ -240,5 +263,15 @@ public class Metrics {
 
     // Create map for tracking gauges
     gaugeAtomics = new HashMap<>();
+  }
+
+  private void registerAll(String prefix, MetricSet metricSet) {
+    for (Map.Entry<String, Metric> entry : metricSet.getMetrics().entrySet()) {
+      if (entry.getValue() instanceof MetricSet) {
+        registerAll(prefix + "." + entry.getKey(), (MetricSet) entry.getValue());
+      } else {
+        registry.register(prefix + "." + entry.getKey(), entry.getValue());
+      }
+    }
   }
 }

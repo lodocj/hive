@@ -72,9 +72,11 @@ public class TableExport {
         ? null
         : tableSpec;
     this.replicationSpec = replicationSpec;
-    if (conf.getBoolVar(HiveConf.ConfVars.REPL_DUMP_METADATA_ONLY) || (this.tableSpec != null
-        && this.tableSpec.tableHandle.isView())) {
+    if (conf.getBoolVar(HiveConf.ConfVars.REPL_DUMP_METADATA_ONLY) ||
+            (this.tableSpec != null && this.tableSpec.tableHandle.isView())) {
       this.replicationSpec.setIsMetadataOnly(true);
+
+      this.tableSpec.tableHandle.setStatsStateLikeNewTable();
     }
     this.db = db;
     this.distCpDoAsUser = distCpDoAsUser;
@@ -107,7 +109,7 @@ public class TableExport {
             return null;
           } else {
             return new PartitionIterable(db, tableSpec.tableHandle, null, conf.getIntVar(
-                HiveConf.ConfVars.METASTORE_BATCH_RETRIEVE_MAX));
+                HiveConf.ConfVars.METASTORE_BATCH_RETRIEVE_MAX), true);
           }
         } else {
           // PARTITIONS specified - partitions inside tableSpec
@@ -150,7 +152,7 @@ public class TableExport {
       if (tableSpec.tableHandle.isPartitioned()) {
         if (partitions == null) {
           throw new IllegalStateException("partitions cannot be null for partitionTable :"
-              + tableSpec.tableName);
+              + tableSpec.getTableName().getTable());
         }
         new PartitionExport(paths, partitions, distCpDoAsUser, conf, mmCtx).write(replicationSpec);
       } else {
@@ -167,7 +169,8 @@ public class TableExport {
   }
 
   private boolean shouldExport() {
-    return Utils.shouldReplicate(replicationSpec, tableSpec.tableHandle, conf);
+    return Utils.shouldReplicate(replicationSpec, tableSpec.tableHandle,
+            false, null, null, conf);
   }
 
   /**
@@ -313,7 +316,7 @@ public class TableExport {
         if (tableSpec.tableHandle.isPartitioned()) {
           if (partitions == null) {
             throw new IllegalStateException("partitions cannot be null for partitionTable :"
-                + tableSpec.tableName);
+                + tableSpec.getTableName().getTable());
           }
           for (Partition partition : partitions) {
             authEntities.inputs.add(new ReadEntity(partition));

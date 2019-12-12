@@ -57,14 +57,10 @@ import org.apache.hadoop.hive.ql.io.BucketCodec;
 import org.apache.hadoop.hive.ql.io.HiveInputFormat;
 import org.apache.hadoop.hive.ql.lockmgr.HiveTxnManager;
 import org.apache.hadoop.hive.ql.lockmgr.TxnManagerFactory;
-import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
+import org.apache.hadoop.hive.ql.processors.CommandProcessorException;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.metastore.txn.AcidOpenTxnsCounterService;
-import org.apache.hadoop.hive.ql.txn.compactor.Cleaner;
-import org.apache.hadoop.hive.ql.txn.compactor.CompactorThread;
 import org.apache.hadoop.hive.ql.txn.compactor.Initiator;
-import org.apache.hadoop.hive.ql.txn.compactor.Worker;
-import org.apache.hadoop.mapred.JobConf;
 import org.apache.orc.OrcFile;
 import org.apache.orc.Reader;
 import org.apache.orc.TypeDescription;
@@ -147,6 +143,7 @@ public class TestTxnCommands2 {
         .setVar(HiveConf.ConfVars.HIVE_AUTHORIZATION_MANAGER,
             "org.apache.hadoop.hive.ql.security.authorization.plugin.sqlstd.SQLStdHiveAuthorizerFactory");
     hiveConf.setBoolVar(HiveConf.ConfVars.MERGE_CARDINALITY_VIOLATION_CHECK, true);
+    HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.MERGE_SPLIT_UPDATE, true);
     hiveConf.setBoolVar(HiveConf.ConfVars.HIVESTATSCOLAUTOGATHER, false);
     //TestTxnCommands2WithSplitUpdateAndVectorization has the vectorized version
     //of these tests.
@@ -163,7 +160,7 @@ public class TestTxnCommands2 {
     }
     SessionState ss = SessionState.start(hiveConf);
     ss.applyAuthorizationPolicy();
-    d = new Driver(new QueryState.Builder().withHiveConf(hiveConf).nonIsolated().build(), null);
+    d = new Driver(new QueryState.Builder().withHiveConf(hiveConf).nonIsolated().build());
     d.setMaxRows(10000);
     dropTables();
     runStatementOnDriver("create table " + Table.ACIDTBL + "(a int, b int) clustered by (a) into " + BUCKET_COUNT + " buckets stored as orc TBLPROPERTIES (" + tableProperties + ")");
@@ -375,15 +372,15 @@ public class TestTxnCommands2 {
      * Note: order of rows in a file ends up being the reverse of order in values clause (why?!)
      */
     String[][] expected = {
-        {"{\"writeid\":0,\"bucketid\":536936448,\"rowid\":4}\t0\t13",  "bucket_00001"},
-        {"{\"writeid\":10000001,\"bucketid\":536936448,\"rowid\":1}\t0\t15", "bucket_00001"},
+        {"{\"writeid\":0,\"bucketid\":536936448,\"rowid\":2}\t0\t13",  "bucket_00001"},
+        {"{\"writeid\":10000001,\"bucketid\":536936448,\"rowid\":0}\t0\t15", "bucket_00001"},
         {"{\"writeid\":10000003,\"bucketid\":536936448,\"rowid\":0}\t0\t17", "bucket_00001"},
         {"{\"writeid\":10000002,\"bucketid\":536936448,\"rowid\":0}\t0\t120", "bucket_00001"},
         {"{\"writeid\":0,\"bucketid\":536936448,\"rowid\":1}\t1\t2",   "bucket_00001"},
-        {"{\"writeid\":0,\"bucketid\":536936448,\"rowid\":3}\t1\t4",   "bucket_00001"},
-        {"{\"writeid\":0,\"bucketid\":536936448,\"rowid\":2}\t1\t5",   "bucket_00001"},
+        {"{\"writeid\":0,\"bucketid\":536936448,\"rowid\":5}\t1\t4",   "bucket_00001"},
+        {"{\"writeid\":0,\"bucketid\":536936448,\"rowid\":4}\t1\t5",   "bucket_00001"},
         {"{\"writeid\":0,\"bucketid\":536936448,\"rowid\":6}\t1\t6",   "bucket_00001"},
-        {"{\"writeid\":10000001,\"bucketid\":536936448,\"rowid\":0}\t1\t16", "bucket_00001"}
+        {"{\"writeid\":10000001,\"bucketid\":536936448,\"rowid\":1}\t1\t16", "bucket_00001"}
     };
     Assert.assertEquals("Unexpected row count before compaction", expected.length, rs.size());
     for(int i = 0; i < expected.length; i++) {
@@ -393,6 +390,7 @@ public class TestTxnCommands2 {
     //run Compaction
     runStatementOnDriver("alter table "+ TestTxnCommands2.Table.NONACIDORCTBL +" compact 'major'");
     TestTxnCommands2.runWorker(hiveConf);
+    //TestTxnCommands2.runCleaner(hiveConf);
     rs = runStatementOnDriver("select ROW__ID, a, b, INPUT__FILE__NAME from " + Table.NONACIDORCTBL + " order by a,b");
     LOG.warn("after compact");
     for(String s : rs) {
@@ -952,7 +950,7 @@ public class TestTxnCommands2 {
   public void testEmptyInTblproperties() throws Exception {
     runStatementOnDriver("create table t1 " + "(a int, b int) stored as orc TBLPROPERTIES ('serialization.null.format'='', 'transactional'='true')");
     runStatementOnDriver("insert into t1 " + "(a,b) values(1,7),(3,7)");
-    runStatementOnDriver("update t1" + " set b = -2 where b = 2");
+    runStatementOnDriver("update t1" + " set b = -2 where a = 1");
     runStatementOnDriver("alter table t1 " + " compact 'MAJOR'");
     runWorker(hiveConf);
     TxnStore txnHandler = TxnUtils.getTxnStore(hiveConf);
@@ -1189,40 +1187,15 @@ public class TestTxnCommands2 {
     }
     return compactionsByState;
   }
-  public static void runWorker(HiveConf hiveConf) throws MetaException {
-    runCompactorThread(hiveConf, CompactorThreadType.WORKER);
+  public static void runWorker(HiveConf hiveConf) throws Exception {
+    TxnCommandsBaseForTests.runWorker(hiveConf);
   }
-  public static void runCleaner(HiveConf hiveConf) throws MetaException {
-    runCompactorThread(hiveConf, CompactorThreadType.CLEANER);
+  public static void runCleaner(HiveConf hiveConf) throws Exception {
+    TxnCommandsBaseForTests.runCleaner(hiveConf);
   }
-  public static void runInitiator(HiveConf hiveConf) throws MetaException {
-    runCompactorThread(hiveConf, CompactorThreadType.INITIATOR);
+  public static void runInitiator(HiveConf hiveConf) throws Exception {
+    TxnCommandsBaseForTests.runInitiator(hiveConf);
   }
-  private enum CompactorThreadType {INITIATOR, WORKER, CLEANER}
-  private static void runCompactorThread(HiveConf hiveConf, CompactorThreadType type)
-      throws MetaException {
-    AtomicBoolean stop = new AtomicBoolean(true);
-    CompactorThread t = null;
-    switch (type) {
-      case INITIATOR:
-        t = new Initiator();
-        break;
-      case WORKER:
-        t = new Worker();
-        break;
-      case CLEANER:
-        t = new Cleaner();
-        break;
-      default:
-        throw new IllegalArgumentException("Unknown type: " + type);
-    }
-    t.setThreadId((int) t.getId());
-    t.setConf(hiveConf);
-    AtomicBoolean looped = new AtomicBoolean();
-    t.init(stop, looped);
-    t.run();
-  }
-
   /**
    * HIVE-12352 has details
    * @throws Exception
@@ -1350,7 +1323,8 @@ public class TestTxnCommands2 {
     ShowCompactResponse resp = txnHandler.showCompact(new ShowCompactRequest());
     Assert.assertEquals("Unexpected number of compactions in history", 2, resp.getCompactsSize());
     Assert.assertEquals("Unexpected 0 compaction state", TxnStore.CLEANING_RESPONSE, resp.getCompacts().get(0).getState());
-    Assert.assertEquals("Unexpected 1 compaction state", TxnStore.CLEANING_RESPONSE, resp.getCompacts().get(1).getState());
+    Assert.assertEquals("Unexpected 1 compaction state", TxnStore.SUCCEEDED_RESPONSE,
+        resp.getCompacts().get(1).getState());
   }
 
   /**
@@ -1623,7 +1597,6 @@ public class TestTxnCommands2 {
     runStatementOnDriver("create temporary table if not exists data1 (x int)");
     runStatementOnDriver("insert into data1 values (1),(2),(1)");
     d.destroy();
-    hiveConf.setVar(HiveConf.ConfVars.DYNAMICPARTITIONINGMODE, "nonstrict");
     d = new Driver(hiveConf);
 
     runStatementOnDriver(" from data1 " +
@@ -1655,7 +1628,6 @@ public class TestTxnCommands2 {
   @Ignore
   public void testDynamicPartitions() throws Exception {
     d.destroy();
-    hiveConf.setVar(HiveConf.ConfVars.DYNAMICPARTITIONINGMODE, "nonstrict");
     //In DbTxnManager.acquireLocks() we have
     // 1 ReadEntity: default@values__tmp__table__1
     // 1 WriteEntity: default@acidtblpart Type=TABLE WriteType=INSERT isDP=false
@@ -1697,7 +1669,6 @@ public class TestTxnCommands2 {
   @Test
   public void testDynamicPartitionsMerge() throws Exception {
     d.destroy();
-    hiveConf.setVar(HiveConf.ConfVars.DYNAMICPARTITIONINGMODE, "nonstrict");
     runStatementOnDriver("insert into " + Table.ACIDTBLPART + " partition(p) values(1,1,'p1'),(2,2,'p1'),(3,3,'p1'),(4,4,'p2')");
 
     List<String> r1 = runStatementOnDriver("select count(*) from " + Table.ACIDTBLPART);
@@ -1721,7 +1692,6 @@ public class TestTxnCommands2 {
   @Test
   public void testDynamicPartitionsMerge2() throws Exception {
     d.destroy();
-    hiveConf.setVar(HiveConf.ConfVars.DYNAMICPARTITIONINGMODE, "nonstrict");
     int[][] targetVals = {{1,1,1},{2,2,2},{3,3,1},{4,4,2}};
     runStatementOnDriver("insert into " + Table.ACIDNESTEDPART + " partition(p=1,q) " + makeValuesClause(targetVals));
 
@@ -2249,6 +2219,32 @@ public class TestTxnCommands2 {
   }
 
   /**
+   * This tests that delete_delta_x_y dirs will be not produced during minor compaction if no input delete events.
+   * See HIVE-20941.
+   * @throws Exception
+   */
+  @Test
+  public void testDeleteEventsCompaction() throws Exception {
+    int[][] tableData1 = {{1, 2}};
+    int[][] tableData2 = {{2, 3}};
+    int[][] tableData3 = {{3, 4}};
+    runStatementOnDriver("insert into " + Table.ACIDTBL + "(a,b) " + makeValuesClause(tableData1));
+    runStatementOnDriver("insert into " + Table.ACIDTBL + "(a,b) " + makeValuesClause(tableData2));
+    runStatementOnDriver("insert into " + Table.ACIDTBL + "(a,b) " + makeValuesClause(tableData3));
+
+    TxnStore txnHandler = TxnUtils.getTxnStore(hiveConf);
+    txnHandler.compact(new CompactionRequest("default", Table.ACIDTBL.name().toLowerCase(), CompactionType.MINOR));
+    runWorker(hiveConf);
+    runCleaner(hiveConf);
+
+    FileSystem fs = FileSystem.get(hiveConf);
+    FileStatus[] fileStatuses = fs.globStatus(new Path(TEST_WAREHOUSE_DIR + "/" + Table.ACIDTBL.name().toLowerCase() + "/*"));
+    for(FileStatus fileStatus : fileStatuses) {
+      Assert.assertFalse(fileStatus.getPath().getName().startsWith(AcidUtils.DELETE_DELTA_PREFIX));
+    }
+  }
+
+  /**
    * takes raw data and turns it into a string as if from Driver.getResults()
    * sorts rows in dictionary order
    */
@@ -2304,9 +2300,10 @@ public class TestTxnCommands2 {
 
   protected List<String> runStatementOnDriver(String stmt) throws Exception {
     LOG.info("+runStatementOnDriver(" + stmt + ")");
-    CommandProcessorResponse cpr = d.run(stmt);
-    if(cpr.getResponseCode() != 0) {
-      throw new RuntimeException(stmt + " failed: " + cpr);
+    try {
+      d.run(stmt);
+    } catch (CommandProcessorException e) {
+      throw new RuntimeException(stmt + " failed: " + e);
     }
     List<String> rs = new ArrayList<String>();
     d.getResults(rs);

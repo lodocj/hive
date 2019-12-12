@@ -18,7 +18,6 @@
 
 package org.apache.hadoop.hive.ql.exec.vector.expressions;
 
-import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.CharsetDecoder;
@@ -31,6 +30,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.commons.lang.ArrayUtils;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorExpressionDescriptor;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
@@ -66,8 +66,8 @@ public abstract class AbstractFilterStringColLikeStringScalar extends VectorExpr
   }
 
   @Override
-  public void transientInit() throws HiveException {
-    super.transientInit();
+  public void transientInit(Configuration conf) throws HiveException {
+    super.transientInit(conf);
 
     checker = createChecker(pattern);
   }
@@ -227,11 +227,7 @@ public abstract class AbstractFilterStringColLikeStringScalar extends VectorExpr
     final byte [] byteSub;
 
     NoneChecker(String pattern) {
-      try {
-        byteSub = pattern.getBytes("UTF-8");
-      } catch (UnsupportedEncodingException e) {
-        throw new RuntimeException(e);
-      }
+      byteSub = pattern.getBytes(StandardCharsets.UTF_8);
     }
 
     public boolean check(byte[] byteS, int start, int len) {
@@ -255,11 +251,7 @@ public abstract class AbstractFilterStringColLikeStringScalar extends VectorExpr
     final byte[] byteSub;
 
     BeginChecker(String pattern) {
-      try {
-        byteSub = pattern.getBytes("UTF-8");
-      } catch (UnsupportedEncodingException e) {
-        throw new RuntimeException(e);
-      }
+      byteSub = pattern.getBytes(StandardCharsets.UTF_8);
     }
 
     public boolean check(byte[] byteS, int start, int len) {
@@ -278,11 +270,7 @@ public abstract class AbstractFilterStringColLikeStringScalar extends VectorExpr
     final byte[] byteSub;
 
     EndChecker(String pattern) {
-      try {
-        byteSub = pattern.getBytes("UTF-8");
-      } catch (UnsupportedEncodingException e) {
-        throw new RuntimeException(e);
-      }
+      byteSub = pattern.getBytes(StandardCharsets.UTF_8);
     }
 
     public boolean check(byte[] byteS, int start, int len) {
@@ -417,11 +405,7 @@ public abstract class AbstractFilterStringColLikeStringScalar extends VectorExpr
     }
 
     private int utf8Length(String chunk) {
-      try {
-        return chunk.getBytes("UTF-8").length;
-      } catch (UnsupportedEncodingException ue) {
-        throw new RuntimeException(ue);
-      }
+      return chunk.getBytes(StandardCharsets.UTF_8).length;
     }
 
   }

@@ -61,7 +61,7 @@ POSTHOOK: Input: default@test_tab_n3@part=1
 #### A masked pattern was here ####
 OPTIMIZED SQL: SELECT CAST('484' AS STRING) AS `key`, `value`, CAST('1' AS STRING) AS `part`
 FROM `default`.`test_tab_n3`
-WHERE `part` = '1' AND `key` = '484'
+WHERE `key` = '484' AND `part` = '1'
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -72,23 +72,23 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: test_tab_n3
-            filterExpr: ((part = '1') and (key = '484')) (type: boolean)
-            Statistics: Num rows: 500 Data size: 4812 Basic stats: COMPLETE Column stats: NONE
+            filterExpr: ((key = '484') and (part = '1')) (type: boolean)
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             GatherStats: false
             Filter Operator
               isSamplingPred: false
               predicate: (key = '484') (type: boolean)
-              Statistics: Num rows: 250 Data size: 2406 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 2 Data size: 356 Basic stats: COMPLETE Column stats: COMPLETE
               Select Operator
                 expressions: '484' (type: string), value (type: string), '1' (type: string)
                 outputColumnNames: _col0, _col1, _col2
-                Statistics: Num rows: 250 Data size: 2406 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 2 Data size: 526 Basic stats: COMPLETE Column stats: COMPLETE
                 File Output Operator
                   compressed: false
                   GlobalTableId: 0
 #### A masked pattern was here ####
                   NumFilesPerFileSink: 1
-                  Statistics: Num rows: 250 Data size: 2406 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 2 Data size: 526 Basic stats: COMPLETE Column stats: COMPLETE
 #### A masked pattern was here ####
                   table:
                       input format: org.apache.hadoop.mapred.SequenceFileInputFormat
@@ -188,7 +188,7 @@ POSTHOOK: Input: default@test_tab_n3@part=1
 #### A masked pattern was here ####
 OPTIMIZED SQL: SELECT CAST('0' AS STRING) AS `key`, `value`, CAST('1' AS STRING) AS `part`
 FROM `default`.`test_tab_n3`
-WHERE `part` = '1' AND `key` = '0'
+WHERE `key` = '0' AND `part` = '1'
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -199,23 +199,23 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             alias: test_tab_n3
-            filterExpr: ((part = '1') and (key = '0')) (type: boolean)
-            Statistics: Num rows: 500 Data size: 4812 Basic stats: COMPLETE Column stats: NONE
+            filterExpr: ((key = '0') and (part = '1')) (type: boolean)
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             GatherStats: false
             Filter Operator
               isSamplingPred: false
               predicate: (key = '0') (type: boolean)
-              Statistics: Num rows: 250 Data size: 2406 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 2 Data size: 356 Basic stats: COMPLETE Column stats: COMPLETE
               Select Operator
                 expressions: '0' (type: string), value (type: string), '1' (type: string)
                 outputColumnNames: _col0, _col1, _col2
-                Statistics: Num rows: 250 Data size: 2406 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 2 Data size: 522 Basic stats: COMPLETE Column stats: COMPLETE
                 File Output Operator
                   compressed: false
                   GlobalTableId: 0
 #### A masked pattern was here ####
                   NumFilesPerFileSink: 1
-                  Statistics: Num rows: 250 Data size: 2406 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 2 Data size: 522 Basic stats: COMPLETE Column stats: COMPLETE
 #### A masked pattern was here ####
                   table:
                       input format: org.apache.hadoop.mapred.SequenceFileInputFormat

@@ -67,11 +67,13 @@ STAGE PLANS:
                           vectorProcessingMode: HASH
                           projectedOutputColumnNums: [0]
                       keys: key (type: string), val (type: string), 0L (type: bigint)
+                      minReductionHashAggr: 0.99
                       mode: hash
                       outputColumnNames: _col0, _col1, _col2, _col3
                       Statistics: Num rows: 4 Data size: 1472 Basic stats: COMPLETE Column stats: NONE
                       Reduce Output Operator
                         key expressions: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
+                        null sort order: aaa
                         sort order: +++
                         Map-reduce partition columns: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
                         Reduce Sink Vectorization:
@@ -208,11 +210,13 @@ STAGE PLANS:
                           vectorProcessingMode: HASH
                           projectedOutputColumnNums: [0]
                       keys: key (type: string), val (type: string), 0L (type: bigint)
+                      minReductionHashAggr: 0.99
                       mode: hash
                       outputColumnNames: _col0, _col1, _col2, _col3
                       Statistics: Num rows: 4 Data size: 1472 Basic stats: COMPLETE Column stats: NONE
                       Reduce Output Operator
                         key expressions: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
+                        null sort order: aaa
                         sort order: +++
                         Map-reduce partition columns: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
                         Reduce Sink Vectorization:
@@ -375,11 +379,13 @@ STAGE PLANS:
                           vectorProcessingMode: HASH
                           projectedOutputColumnNums: [0]
                       keys: _col0 (type: string), _col1 (type: string), 0L (type: bigint)
+                      minReductionHashAggr: 0.99
                       mode: hash
                       outputColumnNames: _col0, _col1, _col2, _col3
                       Statistics: Num rows: 4 Data size: 1472 Basic stats: COMPLETE Column stats: NONE
                       Reduce Output Operator
                         key expressions: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
+                        null sort order: aaa
                         sort order: +++
                         Map-reduce partition columns: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
                         Reduce Sink Vectorization:
@@ -526,11 +532,13 @@ STAGE PLANS:
                     Group By Operator
                       aggregations: count(DISTINCT val)
                       keys: key (type: string), 0L (type: bigint), val (type: string)
+                      minReductionHashAggr: 0.99
                       mode: hash
                       outputColumnNames: _col0, _col1, _col2, _col3
                       Statistics: Num rows: 2 Data size: 736 Basic stats: COMPLETE Column stats: NONE
                       Reduce Output Operator
                         key expressions: _col0 (type: string), _col1 (type: bigint), _col2 (type: string)
+                        null sort order: aaa
                         sort order: +++
                         Map-reduce partition columns: _col0 (type: string), _col1 (type: bigint)
                         Statistics: Num rows: 2 Data size: 736 Basic stats: COMPLETE Column stats: NONE
@@ -643,11 +651,13 @@ STAGE PLANS:
                           vectorProcessingMode: HASH
                           projectedOutputColumnNums: [0]
                       keys: key (type: string), val (type: string), 0L (type: bigint)
+                      minReductionHashAggr: 0.99
                       mode: hash
                       outputColumnNames: _col0, _col1, _col2, _col3
                       Statistics: Num rows: 4 Data size: 1472 Basic stats: COMPLETE Column stats: NONE
                       Reduce Output Operator
                         key expressions: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
+                        null sort order: aaa
                         sort order: +++
                         Map-reduce partition columns: rand() (type: double)
                         Reduce Sink Vectorization:
@@ -708,6 +718,7 @@ STAGE PLANS:
                 Statistics: Num rows: 4 Data size: 1472 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
+                  null sort order: aaa
                   sort order: +++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
                   Reduce Sink Vectorization:
@@ -840,11 +851,13 @@ STAGE PLANS:
                     Group By Operator
                       aggregations: count(DISTINCT val)
                       keys: key (type: string), 0L (type: bigint), val (type: string)
+                      minReductionHashAggr: 0.99
                       mode: hash
                       outputColumnNames: _col0, _col1, _col2, _col3
                       Statistics: Num rows: 2 Data size: 736 Basic stats: COMPLETE Column stats: NONE
                       Reduce Output Operator
                         key expressions: _col0 (type: string), _col1 (type: bigint), _col2 (type: string)
+                        null sort order: aaa
                         sort order: +++
                         Map-reduce partition columns: _col0 (type: string)
                         Statistics: Num rows: 2 Data size: 736 Basic stats: COMPLETE Column stats: NONE
@@ -872,6 +885,7 @@ STAGE PLANS:
                 Statistics: Num rows: 2 Data size: 736 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: bigint)
+                  null sort order: aa
                   sort order: ++
                   Map-reduce partition columns: _col0 (type: string)
                   Statistics: Num rows: 2 Data size: 736 Basic stats: COMPLETE Column stats: NONE
@@ -1007,11 +1021,13 @@ STAGE PLANS:
                           vectorProcessingMode: HASH
                           projectedOutputColumnNums: [0]
                       keys: key (type: string), val (type: string), 0L (type: bigint)
+                      minReductionHashAggr: 0.99
                       mode: hash
                       outputColumnNames: _col0, _col1, _col2, _col3
                       Statistics: Num rows: 4 Data size: 1472 Basic stats: COMPLETE Column stats: NONE
                       Reduce Output Operator
                         key expressions: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
+                        null sort order: aaa
                         sort order: +++
                         Map-reduce partition columns: rand() (type: double)
                         Reduce Sink Vectorization:
@@ -1042,11 +1058,13 @@ STAGE PLANS:
                           vectorProcessingMode: HASH
                           projectedOutputColumnNums: [0]
                       keys: key (type: string), val (type: string), 0L (type: bigint)
+                      minReductionHashAggr: 0.99
                       mode: hash
                       outputColumnNames: _col0, _col1, _col2, _col3
                       Statistics: Num rows: 4 Data size: 1472 Basic stats: COMPLETE Column stats: NONE
                       Reduce Output Operator
                         key expressions: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
+                        null sort order: aaa
                         sort order: +++
                         Map-reduce partition columns: rand() (type: double)
                         Reduce Sink Vectorization:
@@ -1107,6 +1125,7 @@ STAGE PLANS:
                 Statistics: Num rows: 4 Data size: 1472 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
+                  null sort order: aaa
                   sort order: +++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
                   Reduce Sink Vectorization:
@@ -1151,10 +1170,12 @@ STAGE PLANS:
                     Statistics: Num rows: 2 Data size: 736 Basic stats: COMPLETE Column stats: NONE
                     Group By Operator
                       aggregations: compute_stats(key1, 'hll'), compute_stats(key2, 'hll'), compute_stats(val, 'hll')
+                      minReductionHashAggr: 0.99
                       mode: hash
                       outputColumnNames: _col0, _col1, _col2
                       Statistics: Num rows: 1 Data size: 1680 Basic stats: COMPLETE Column stats: NONE
                       Reduce Output Operator
+                        null sort order: 
                         sort order: 
                         Statistics: Num rows: 1 Data size: 1680 Basic stats: COMPLETE Column stats: NONE
                         value expressions: _col0 (type: struct<columntype:string,maxlength:bigint,sumlength:bigint,count:bigint,countnulls:bigint,bitvector:binary>), _col1 (type: struct<columntype:string,maxlength:bigint,sumlength:bigint,count:bigint,countnulls:bigint,bitvector:binary>), _col2 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,bitvector:binary>)
@@ -1210,6 +1231,7 @@ STAGE PLANS:
                 Statistics: Num rows: 4 Data size: 1472 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
                   key expressions: _col0 (type: string), _col1 (type: string), _col2 (type: bigint)
+                  null sort order: aaa
                   sort order: +++
                   Map-reduce partition columns: _col0 (type: string), _col1 (type: string)
                   Reduce Sink Vectorization:
@@ -1254,10 +1276,12 @@ STAGE PLANS:
                     Statistics: Num rows: 2 Data size: 736 Basic stats: COMPLETE Column stats: NONE
                     Group By Operator
                       aggregations: compute_stats(key1, 'hll'), compute_stats(key2, 'hll'), compute_stats(val, 'hll')
+                      minReductionHashAggr: 0.99
                       mode: hash
                       outputColumnNames: _col0, _col1, _col2
                       Statistics: Num rows: 1 Data size: 1680 Basic stats: COMPLETE Column stats: NONE
                       Reduce Output Operator
+                        null sort order: 
                         sort order: 
                         Statistics: Num rows: 1 Data size: 1680 Basic stats: COMPLETE Column stats: NONE
                         value expressions: _col0 (type: struct<columntype:string,maxlength:bigint,sumlength:bigint,count:bigint,countnulls:bigint,bitvector:binary>), _col1 (type: struct<columntype:string,maxlength:bigint,sumlength:bigint,count:bigint,countnulls:bigint,bitvector:binary>), _col2 (type: struct<columntype:string,min:bigint,max:bigint,countnulls:bigint,bitvector:binary>)

@@ -49,6 +49,11 @@
 </property>
 
 <property>
+  <name>datanucleus.connectionPool.maxPoolSize</name>
+  <value>4</value>
+</property>
+
+<property>
   <name>hive.metastore.schema.verification</name>
   <value>false</value>
 </property>
@@ -61,7 +66,7 @@
 
 <property>
   <name>javax.jdo.option.ConnectionURL</name>
-  <value>jdbc:derby:;databaseName=${test.tmp.dir}/junit_metastore_db;create=true</value>
+  <value>jdbc:derby:memory:${test.tmp.dir}/junit_metastore_db;create=true</value>
 </property>
 
 <property>
@@ -167,6 +172,12 @@
     Disabling this for tests so that minimr is not affected
   </description>
 </property>
+
+<property>
+  <name>hive.merge.nway.joins</name>
+  <value>true</value>
+</property>
+
 
 <property>
   <name>hive.auto.convert.join</name>
@@ -285,5 +296,15 @@
   <value>99</value>
 </property>
 
+<!-- remove this after HIVE-18139 and HIVE-20573 -->
+<property>
+  <name>hive.stats.fetch.column.stats</name>
+  <value>false</value>
+</property>
+
+<property>
+  <name>hive.query.reexecution.stats.persist.scope</name>
+  <value>query</value>
+</property>
 
 </configuration>

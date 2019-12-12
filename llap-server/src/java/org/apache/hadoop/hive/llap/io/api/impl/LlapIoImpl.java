@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 
 import javax.management.ObjectName;
 
+import org.apache.hadoop.hive.common.io.CacheTag;
 import org.apache.hadoop.hive.llap.daemon.impl.StatsRecordingThreadPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -143,9 +144,10 @@ public class LlapIoImpl implements LlapIo<VectorizedRowBatch>, LlapIoDebugDump {
       // Memory manager uses cache policy to trigger evictions, so create the policy first.
       boolean useLrfu = HiveConf.getBoolVar(conf, HiveConf.ConfVars.LLAP_USE_LRFU);
       long totalMemorySize = HiveConf.getSizeVar(conf, ConfVars.LLAP_IO_MEMORY_MAX_SIZE);
-      int minAllocSize = (int)HiveConf.getSizeVar(conf, ConfVars.LLAP_ALLOCATOR_MIN_ALLOC);
-      LowLevelCachePolicy realCachePolicy = useLrfu ? new LowLevelLrfuCachePolicy(
-          minAllocSize, totalMemorySize, conf) : new LowLevelFifoCachePolicy();
+      int minAllocSize = (int) HiveConf.getSizeVar(conf, ConfVars.LLAP_ALLOCATOR_MIN_ALLOC);
+      LowLevelCachePolicy
+          realCachePolicy =
+          useLrfu ? new LowLevelLrfuCachePolicy(minAllocSize, totalMemorySize, conf) : new LowLevelFifoCachePolicy();
       boolean trackUsage = HiveConf.getBoolVar(conf, HiveConf.ConfVars.LLAP_TRACK_CACHE_USAGE);
       LowLevelCachePolicy cachePolicyWrapper;
       if (trackUsage) {
@@ -167,6 +169,7 @@ public class LlapIoImpl implements LlapIo<VectorizedRowBatch>, LlapIoDebugDump {
         SerDeLowLevelCacheImpl serdeCacheImpl = new SerDeLowLevelCacheImpl(
             cacheMetrics, cachePolicyWrapper, allocator);
         serdeCache = serdeCacheImpl;
+        serdeCacheImpl.setConf(conf);
       }
 
       boolean useGapCache = HiveConf.getBoolVar(conf, ConfVars.LLAP_CACHE_ENABLE_ORC_GAP_CACHE);
@@ -298,7 +301,7 @@ public class LlapIoImpl implements LlapIo<VectorizedRowBatch>, LlapIoDebugDump {
 
     @Override
     public long[] putFileData(Object fileKey, DiskRange[] ranges,
-        MemoryBuffer[] data, long baseOffset, String tag) {
+        MemoryBuffer[] data, long baseOffset, CacheTag tag) {
       return lowLevelCache.putFileData(
           fileKey, ranges, data, baseOffset, Priority.NORMAL, null, tag);
     }

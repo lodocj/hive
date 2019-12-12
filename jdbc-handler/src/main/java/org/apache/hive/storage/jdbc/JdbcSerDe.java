@@ -24,6 +24,7 @@ import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.AbstractSerDe;
 import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.SerDeStats;
+import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector.Category;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory;
@@ -37,6 +38,7 @@ import org.apache.hadoop.io.MapWritable;
 import org.apache.hadoop.io.ObjectWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.io.Writable;
+import org.apache.hive.common.util.DateUtils;
 import org.apache.hive.storage.jdbc.conf.JdbcStorageConfigManager;
 import org.apache.hive.storage.jdbc.dao.DatabaseAccessor;
 import org.apache.hive.storage.jdbc.dao.DatabaseAccessorFactory;
@@ -46,19 +48,25 @@ import org.slf4j.LoggerFactory;
 import org.apache.hive.storage.jdbc.conf.JdbcStorageConfig;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
+
+import static java.time.ZoneOffset.UTC;
 
 public class JdbcSerDe extends AbstractSerDe {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(JdbcSerDe.class);
 
   private String[] hiveColumnNames;
+  private int numColumns;
   private PrimitiveTypeInfo[] hiveColumnTypes;
   private ObjectInspector inspector;
   private List<Object> row;
+  private DBRecordWritable dbRecordWritable;
 
 
   /*
@@ -86,8 +94,19 @@ public class JdbcSerDe extends AbstractSerDe {
                   Preconditions.checkNotNull(properties.getProperty(Constants.JDBC_QUERY_FIELD_TYPES, null));
           hiveColumnNames = fieldNamesProperty.trim().split(",");
           hiveColumnTypesList = TypeInfoUtils.getTypeInfosFromTypeString(fieldTypesProperty);
-        } else {
+        } else if (properties.containsKey(Constants.JDBC_QUERY)) {
+          // The query has been specified by user, extract column names
           hiveColumnNames = properties.getProperty(serdeConstants.LIST_COLUMNS).split(",");
+          hiveColumnTypesList = TypeInfoUtils.getTypeInfosFromTypeString(properties.getProperty(serdeConstants.LIST_COLUMN_TYPES));
+        } else {
+          // Table is specified, we need to get the column names from the accessor due to capitalization
+          hiveColumnNames = dbAccessor.getColumnNames(tableConfig).toArray(new String[0]);
+          // Number should be equal to list of columns
+          if (hiveColumnNames.length != properties.getProperty(serdeConstants.LIST_COLUMNS).split(",").length) {
+            throw new SerDeException("Column numbers do not match. " +
+                "Remote table columns are " + Arrays.toString(hiveColumnNames) + " and declared table columns in Hive " +
+                "external table are " + Arrays.toString(properties.getProperty(serdeConstants.LIST_COLUMNS).split(",")));
+          }
           hiveColumnTypesList = TypeInfoUtils.getTypeInfosFromTypeString(properties.getProperty(serdeConstants.LIST_COLUMN_TYPES));
         }
         if (hiveColumnNames.length == 0) {
@@ -96,6 +115,9 @@ public class JdbcSerDe extends AbstractSerDe {
         if (hiveColumnTypesList.size() == 0) {
           throw new SerDeException("Received an empty Hive column type definition");
         }
+
+        numColumns = hiveColumnNames.length;
+        dbRecordWritable = new DBRecordWritable(numColumns);
 
         // Populate column types and inspector
         hiveColumnTypes = new PrimitiveTypeInfo[hiveColumnTypesList.size()];
@@ -119,6 +141,72 @@ public class JdbcSerDe extends AbstractSerDe {
       LOGGER.error("Caught exception while initializing the SqlSerDe", e);
       throw new SerDeException(e);
     }
+
+    if (LOGGER.isDebugEnabled()) {
+      LOGGER.debug("JdbcSerDe initialized with\n" + "\t columns: " + Arrays.toString(hiveColumnNames) + "\n\t types: " + Arrays
+          .toString(hiveColumnTypes));
+    }
+  }
+
+  @Override
+  public DBRecordWritable serialize(Object row, ObjectInspector inspector) throws SerDeException {
+    LOGGER.trace("Serializing from SerDe");
+    if ((row == null) || (hiveColumnTypes == null)) {
+      throw new SerDeException("JDBC SerDe hasn't been initialized properly");
+    }
+
+    if (((Object[]) row).length != numColumns) {
+      throw new SerDeException(String.format("Required %d columns, received %d.", numColumns, ((Object[]) row).length));
+    }
+
+    dbRecordWritable.clear();
+    for (int i = 0; i < numColumns; i++) {
+      Object rowData = ((Object[]) row)[i];
+      switch (hiveColumnTypes[i].getPrimitiveCategory()) {
+      case INT:
+        rowData = Integer.valueOf(rowData.toString());
+        break;
+      case SHORT:
+        rowData = Short.valueOf(rowData.toString());
+        break;
+      case BYTE:
+        rowData = Byte.valueOf(rowData.toString());
+        break;
+      case LONG:
+        rowData = Long.valueOf(rowData.toString());
+        break;
+      case FLOAT:
+        rowData = Float.valueOf(rowData.toString());
+        break;
+      case DOUBLE:
+        rowData = Double.valueOf(rowData.toString());
+        break;
+      case DECIMAL:
+        int scale = ((HiveDecimalWritable) rowData).getScale();
+        long value = ((HiveDecimalWritable) rowData).getHiveDecimal().unscaledValue().longValue();
+        rowData = java.math.BigDecimal.valueOf(value, scale);
+        break;
+      case BOOLEAN:
+        rowData = Boolean.valueOf(rowData.toString());
+        break;
+      case CHAR:
+      case VARCHAR:
+      case STRING:
+        rowData = String.valueOf(rowData.toString());
+        break;
+      case DATE:
+        rowData = java.sql.Date.valueOf(rowData.toString());
+        break;
+      case TIMESTAMP:
+        rowData = java.sql.Timestamp.valueOf(rowData.toString());
+        break;
+      default:
+        //do nothing
+        break;
+      }
+      dbRecordWritable.set(i, rowData);
+    }
+    return dbRecordWritable;
   }
 
   @Override
@@ -148,12 +236,24 @@ public class JdbcSerDe extends AbstractSerDe {
 
         switch (hiveColumnTypes[i].getPrimitiveCategory()) {
         case INT:
-        case SHORT:
-        case BYTE:
           if (rowVal instanceof Number) {
-            rowVal = ((Number)rowVal).intValue(); 
+            rowVal = ((Number)rowVal).intValue();
           } else {
             rowVal = Integer.valueOf(rowVal.toString());
+          }
+          break;
+        case SHORT:
+          if (rowVal instanceof Number) {
+            rowVal = ((Number)rowVal).shortValue();
+          } else {
+            rowVal = Short.valueOf(rowVal.toString());
+          }
+          break;
+        case BYTE:
+          if (rowVal instanceof Number) {
+            rowVal = ((Number)rowVal).byteValue();
+          } else {
+            rowVal = Byte.valueOf(rowVal.toString());
           }
           break;
         case LONG:
@@ -186,26 +286,30 @@ public class JdbcSerDe extends AbstractSerDe {
           if (rowVal instanceof Number) {
             rowVal = ((Number) value).intValue() != 0;
           } else {
-            rowVal = Boolean.valueOf(value.toString());
+            rowVal = Boolean.valueOf(rowVal.toString());
           }
           break;
         case CHAR:
         case VARCHAR:
         case STRING:
-          rowVal = rowVal.toString();
+          if (rowVal instanceof java.sql.Date) {
+            rowVal = DateUtils.getDateFormat().format((java.sql.Date)rowVal);
+          } else {
+            rowVal = rowVal.toString();
+          }
           break;
         case DATE:
           if (rowVal instanceof java.sql.Date) {
-            java.sql.Date dateRowVal = (java.sql.Date) rowVal;
-            rowVal = Date.ofEpochMilli(dateRowVal.getTime());
+            LocalDate localDate = ((java.sql.Date) rowVal).toLocalDate();
+            rowVal = Date.of(localDate.getYear(), localDate.getMonthValue(), localDate.getDayOfMonth());
           } else {
             rowVal = Date.valueOf (rowVal.toString());
           }
           break;
         case TIMESTAMP:
           if (rowVal instanceof java.sql.Timestamp) {
-            java.sql.Timestamp timestampRowVal = (java.sql.Timestamp) rowVal;
-            rowVal = Timestamp.ofEpochMilli(timestampRowVal.getTime(), timestampRowVal.getNanos());
+            LocalDateTime localDateTime = ((java.sql.Timestamp) rowVal).toLocalDateTime();
+            rowVal = Timestamp.ofEpochSecond(localDateTime.toEpochSecond(UTC), localDateTime.getNano());
           } else {
             rowVal = Timestamp.valueOf (rowVal.toString());
           }
@@ -230,12 +334,6 @@ public class JdbcSerDe extends AbstractSerDe {
   @Override
   public Class<? extends Writable> getSerializedClass() {
     return MapWritable.class;
-  }
-
-
-  @Override
-  public Writable serialize(Object obj, ObjectInspector objInspector) throws SerDeException {
-    throw new UnsupportedOperationException("Writes are not allowed");
   }
 
 

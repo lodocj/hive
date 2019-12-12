@@ -34,6 +34,8 @@ import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.Warehouse;
 import org.apache.hadoop.hive.ql.exec.Task;
 import org.apache.hadoop.hive.ql.exec.Utilities;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Conditional task resolution interface. This is invoked at run time to get the
@@ -42,6 +44,8 @@ import org.apache.hadoop.hive.ql.exec.Utilities;
 public class ConditionalResolverMergeFiles implements ConditionalResolver,
     Serializable {
   private static final long serialVersionUID = 1L;
+
+  private static final Logger LOG = LoggerFactory.getLogger(ConditionalResolverMergeFiles.class);
 
   public ConditionalResolverMergeFiles() {
   }
@@ -52,7 +56,7 @@ public class ConditionalResolverMergeFiles implements ConditionalResolver,
    */
   public static class ConditionalResolverMergeFilesCtx implements Serializable {
     private static final long serialVersionUID = 1L;
-    List<Task<? extends Serializable>> listTasks;
+    List<Task<?>> listTasks;
     private String dir;
     private DynamicPartitionCtx dpCtx; // merge task could be after dynamic partition insert
     private ListBucketingCtx lbCtx;
@@ -64,7 +68,7 @@ public class ConditionalResolverMergeFiles implements ConditionalResolver,
      * @param dir
      */
     public ConditionalResolverMergeFilesCtx(
-        List<Task<? extends Serializable>> listTasks, String dir) {
+        List<Task<?>> listTasks, String dir) {
       this.listTasks = listTasks;
       this.dir = dir;
     }
@@ -79,7 +83,7 @@ public class ConditionalResolverMergeFiles implements ConditionalResolver,
     /**
      * @return the listTasks
      */
-    public List<Task<? extends Serializable>> getListTasks() {
+    public List<Task<?>> getListTasks() {
       return listTasks;
     }
 
@@ -87,7 +91,7 @@ public class ConditionalResolverMergeFiles implements ConditionalResolver,
      * @param listTasks
      *          the listTasks to set
      */
-    public void setListTasks(List<Task<? extends Serializable>> listTasks) {
+    public void setListTasks(List<Task<?>> listTasks) {
       this.listTasks = listTasks;
     }
 
@@ -114,11 +118,11 @@ public class ConditionalResolverMergeFiles implements ConditionalResolver,
     }
   }
 
-  public List<Task<? extends Serializable>> getTasks(HiveConf conf, Object objCtx) {
+  public List<Task<?>> getTasks(HiveConf conf, Object objCtx) {
     ConditionalResolverMergeFilesCtx ctx = (ConditionalResolverMergeFilesCtx) objCtx;
     String dirName = ctx.getDir();
 
-    List<Task<? extends Serializable>> resTsks = new ArrayList<Task<? extends Serializable>>();
+    List<Task<?>> resTsks = new ArrayList<Task<?>>();
     // check if a map-reduce job is needed to merge the files
     // If the current size is smaller than the target, merge
     long trgtSize = conf.getLongVar(HiveConf.ConfVars.HIVEMERGEMAPFILESSIZE);
@@ -126,9 +130,9 @@ public class ConditionalResolverMergeFiles implements ConditionalResolver,
         .getLongVar(HiveConf.ConfVars.HIVEMERGEMAPFILESAVGSIZE);
     trgtSize = Math.max(trgtSize, avgConditionSize);
 
-    Task<? extends Serializable> mvTask = ctx.getListTasks().get(0);
-    Task<? extends Serializable> mrTask = ctx.getListTasks().get(1);
-    Task<? extends Serializable> mrAndMvTask = ctx.getListTasks().get(2);
+    Task<?> mvTask = ctx.getListTasks().get(0);
+    Task<?> mrTask = ctx.getListTasks().get(1);
+    Task<?> mrAndMvTask = ctx.getListTasks().get(2);
 
     try {
       Path dirPath = new Path(dirName);
@@ -190,7 +194,7 @@ public class ConditionalResolverMergeFiles implements ConditionalResolver,
         resTsks.add(mvTask);
       }
     } catch (IOException e) {
-      e.printStackTrace();
+      LOG.warn("Exception while getting tasks", e);
     }
 
     // Only one of the tasks should ever be added to resTsks
@@ -224,9 +228,9 @@ public class ConditionalResolverMergeFiles implements ConditionalResolver,
    * @param dpLbLevel
    * @throws IOException
    */
-  private void generateActualTasks(HiveConf conf, List<Task<? extends Serializable>> resTsks,
-      long trgtSize, long avgConditionSize, Task<? extends Serializable> mvTask,
-      Task<? extends Serializable> mrTask, Task<? extends Serializable> mrAndMvTask, Path dirPath,
+  private void generateActualTasks(HiveConf conf, List<Task<?>> resTsks,
+      long trgtSize, long avgConditionSize, Task<?> mvTask,
+      Task<?> mrTask, Task<?> mrAndMvTask, Path dirPath,
       FileSystem inpFs, ConditionalResolverMergeFilesCtx ctx, MapWork work, int dpLbLevel)
       throws IOException {
     DynamicPartitionCtx dpCtx = ctx.getDPCtx();
@@ -244,10 +248,10 @@ public class ConditionalResolverMergeFiles implements ConditionalResolver,
     work.removePathToPartitionInfo(path); // the root path is not useful anymore
 
     // cleanup pathToAliases
-    LinkedHashMap<Path, ArrayList<String>> pta = work.getPathToAliases();
+    Map<Path, List<String>> pta = work.getPathToAliases();
     assert pta.size() == 1;
     path = pta.keySet().iterator().next();
-    ArrayList<String> aliases = pta.get(path);
+    List<String> aliases = pta.get(path);
     work.removePathToAlias(path); // the root path is not useful anymore
 
     // populate pathToPartitionInfo and pathToAliases w/ DP paths
@@ -297,7 +301,7 @@ public class ConditionalResolverMergeFiles implements ConditionalResolver,
         // will contain different MoveWork objects, which causes problems.
         // Not just in this case, but also in general the child move task of the mrAndMvTask should
         // be used, because that is the correct move task for the "merge and move" use case.
-        Task<? extends Serializable> mergeAndMoveMoveTask = mrAndMvTask.getChildTasks().get(0);
+        Task<?> mergeAndMoveMoveTask = mrAndMvTask.getChildTasks().get(0);
         MoveWork mvWork = (MoveWork) mergeAndMoveMoveTask.getWork();
 
         LoadFileDesc lfd = mvWork.getLoadFileWork();

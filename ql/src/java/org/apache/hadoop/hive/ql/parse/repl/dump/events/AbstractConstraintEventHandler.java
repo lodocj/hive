@@ -31,6 +31,9 @@ abstract class AbstractConstraintEventHandler<T extends EventMessage> extends Ab
         event,
         withinContext.replicationSpec,
         withinContext.db,
+            true,
+        withinContext.getTablesForBootstrap(),
+        withinContext.oldReplScope,
         withinContext.hiveConf
     );
   }

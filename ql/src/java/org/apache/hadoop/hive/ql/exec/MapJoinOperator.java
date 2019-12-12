@@ -23,13 +23,11 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Future;
-import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hive.common.ObjectPair;
 import org.apache.hadoop.hive.conf.Constants;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
@@ -54,6 +52,7 @@ import org.apache.hadoop.hive.ql.exec.persistence.MapJoinTableContainerSerDe;
 import org.apache.hadoop.hive.ql.exec.persistence.MatchTracker;
 import org.apache.hadoop.hive.ql.exec.persistence.ObjectContainer;
 import org.apache.hadoop.hive.ql.exec.persistence.UnwrapRowContainer;
+import org.apache.hadoop.hive.ql.exec.spark.SmallTableCache;
 import org.apache.hadoop.hive.ql.exec.spark.SparkUtilities;
 import org.apache.hadoop.hive.ql.exec.tez.LlapObjectCache;
 import org.apache.hadoop.hive.ql.exec.tez.LlapObjectSubCache;
@@ -133,7 +132,6 @@ public class MapJoinOperator extends AbstractMapJoinOperator<MapJoinDesc> implem
   // Only used in bucket map join.
   private transient int numBuckets = -1;
   private transient int bucketId = -1;
-  private transient ReentrantLock subCacheLock = new ReentrantLock();
 
   /** Kryo ctor. */
   protected MapJoinOperator() {
@@ -679,8 +677,6 @@ public class MapJoinOperator extends AbstractMapJoinOperator<MapJoinDesc> implem
      */
     NonMatchedSmallTableIterator nonMatchedIterator =
         substituteSmallTable.createNonMatchedSmallTableIterator(matchTracker);
-    int nonMatchedKeyCount = 0;
-    int nonMatchedValueCount = 0;
     while (nonMatchedIterator.isNext()) {
       List<Object> keyObjList = nonMatchedIterator.getCurrentKey();
 
@@ -728,15 +724,27 @@ public class MapJoinOperator extends AbstractMapJoinOperator<MapJoinDesc> implem
 
         // FUTURE: Support residual filters for non-equi joins.
         internalForward(standardCopyRow, outputObjInspector);
-        nonMatchedValueCount++;
       }
-
-      nonMatchedKeyCount++;
     }
   }
 
   @Override
   public void closeOp(boolean abort) throws HiveException {
+
+    // Call the small table cache cache method, this way when a task finishes, we still keep the small table around
+    // for at least 30 seconds, which gives any tasks scheduled in the future a chance to re-use the small table.
+    if (HiveConf.getVar(hconf, ConfVars.HIVE_EXECUTION_ENGINE).equals("spark") &&
+            SparkUtilities.isDedicatedCluster(hconf)) {
+
+      for (byte pos = 0; pos < mapJoinTables.length; pos++) {
+        if (pos != conf.getPosBigTable()) {
+          MapJoinTableContainer container = mapJoinTables[pos];
+          if (container != null && container.getKey() != null) {
+            SmallTableCache.cache(container.getKey(), container);
+          }
+        }
+      }
+    }
 
     if (isFullOuterMapJoin) {
 
@@ -922,9 +930,9 @@ public class MapJoinOperator extends AbstractMapJoinOperator<MapJoinDesc> implem
 
     KeyValueHelper writeHelper = container.getWriteHelper();
     while (kvContainer.hasNext()) {
-      ObjectPair<HiveKey, BytesWritable> pair = kvContainer.next();
-      Writable key = pair.getFirst();
-      Writable val = pair.getSecond();
+      Pair<HiveKey, BytesWritable> pair = kvContainer.next();
+      Writable key = pair.getLeft();
+      Writable val = pair.getRight();
       writeHelper.setKeyValue(key, val);
       restoredHashMap.put(writeHelper, -1);
     }

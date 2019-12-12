@@ -31,6 +31,7 @@ import org.apache.hadoop.hive.metastore.api.SQLForeignKey;
 import org.apache.hadoop.hive.metastore.api.SQLPrimaryKey;
 import org.apache.hadoop.hive.metastore.api.Table;
 import org.apache.hadoop.hive.metastore.api.NotificationEvent;
+import org.apache.hadoop.hive.metastore.api.CurrentNotificationEventId;
 
 import static org.junit.Assert.assertEquals;
 
@@ -86,6 +87,11 @@ public class InjectableBehaviourObjectStore extends ObjectStore {
   private static com.google.common.base.Function<NotificationEvent, Boolean> addNotificationEventModifier = null;
 
   private static com.google.common.base.Function<CallerArguments, Boolean> alterTableModifier = null;
+
+  private static com.google.common.base.Function<CurrentNotificationEventId, CurrentNotificationEventId>
+          getCurrNotiEventIdModifier = null;
+
+  private static com.google.common.base.Function<List<Partition>, Boolean> alterPartitionsModifier = null;
 
   // Methods to set/reset getTable modifier
   public static void setGetTableBehaviour(com.google.common.base.Function<Table, Table> modifier){
@@ -147,6 +153,11 @@ public class InjectableBehaviourObjectStore extends ObjectStore {
   public static void resetAlterTableModifier() {
     setAlterTableModifier(null);
   }
+
+  public static void setAlterPartitionsBehaviour(com.google.common.base.Function<List<Partition>, Boolean> modifier){
+    alterPartitionsModifier = modifier;
+  }
+
 
   // ObjectStore methods to be overridden with injected behavior
   @Override
@@ -269,5 +280,41 @@ public class InjectableBehaviourObjectStore extends ObjectStore {
       callerVerifier.apply(args);
     }
     return super.alterDatabase(catalogName, dbname, db);
+  }
+
+  // Methods to set/reset getCurrentNotificationEventId modifier
+  public static void setGetCurrentNotificationEventIdBehaviour(
+          com.google.common.base.Function<CurrentNotificationEventId, CurrentNotificationEventId> modifier){
+    getCurrNotiEventIdModifier = modifier;
+  }
+  public static void resetGetCurrentNotificationEventIdBehaviour(){
+    setGetCurrentNotificationEventIdBehaviour(null);
+  }
+
+  @Override
+  public CurrentNotificationEventId getCurrentNotificationEventId() {
+    CurrentNotificationEventId id = super.getCurrentNotificationEventId();
+    if (getCurrNotiEventIdModifier != null) {
+      id = getCurrNotiEventIdModifier.apply(id);
+      if (id == null) {
+        throw new RuntimeException("InjectableBehaviourObjectStore: Invalid getCurrentNotificationEventId");
+      }
+    }
+    return id;
+  }
+
+  @Override
+  public List<Partition> alterPartitions(String catName, String dbname, String name,
+                                  List<List<String>> part_vals, List<Partition> newParts,
+                                  long writeId, String queryWriteIdList)
+          throws InvalidObjectException, MetaException {
+    if (alterPartitionsModifier != null) {
+      Boolean success = alterPartitionsModifier.apply(newParts);
+      if ((success != null) && !success) {
+        throw new MetaException("InjectableBehaviourObjectStore: Invalid alterPartitions operation on Catalog : "
+                + catName + " DB: " + dbname + " table: " + name);
+      }
+    }
+    return super.alterPartitions(catName, dbname, name, part_vals, newParts, writeId, queryWriteIdList);
   }
 }

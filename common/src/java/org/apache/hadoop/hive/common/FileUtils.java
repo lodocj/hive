@@ -47,14 +47,13 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileUtil;
 import org.apache.hadoop.fs.GlobFilter;
 import org.apache.hadoop.fs.LocalFileSystem;
+import org.apache.hadoop.fs.LocatedFileStatus;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
+import org.apache.hadoop.fs.RemoteIterator;
 import org.apache.hadoop.fs.Trash;
 import org.apache.hadoop.fs.permission.FsAction;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
-import org.apache.hadoop.hive.conf.HiveConfUtil;
-import org.apache.hadoop.hive.io.HdfsUtils;
 import org.apache.hadoop.hive.shims.HadoopShims;
 import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.hive.shims.Utils;
@@ -332,17 +331,45 @@ public final class FileUtils {
    */
   public static void listStatusRecursively(FileSystem fs, FileStatus fileStatus,
       List<FileStatus> results) throws IOException {
-    listStatusRecursively(fs, fileStatus, HIDDEN_FILES_PATH_FILTER, results);
+    if (isS3a(fs)) {
+      // S3A file system has an optimized recursive directory listing implementation however it doesn't support filtering.
+      // Therefore we filter the result set afterwards. This might be not so optimal in HDFS case (which does a tree walking) where a filter could have been used.
+      listS3FilesRecursive(fileStatus, fs, results);
+    } else {
+      generalListStatusRecursively(fs, fileStatus, results);
+    }
   }
 
-  public static void listStatusRecursively(FileSystem fs, FileStatus fileStatus,
-      PathFilter filter, List<FileStatus> results) throws IOException {
+  private static void generalListStatusRecursively(FileSystem fs, FileStatus fileStatus, List<FileStatus> results) throws IOException {
     if (fileStatus.isDir()) {
-      for (FileStatus stat : fs.listStatus(fileStatus.getPath(), filter)) {
-        listStatusRecursively(fs, stat, results);
+      for (FileStatus stat : fs.listStatus(fileStatus.getPath(), HIDDEN_FILES_PATH_FILTER)) {
+        generalListStatusRecursively(fs, stat, results);
       }
     } else {
       results.add(fileStatus);
+    }
+  }
+
+  private static void listS3FilesRecursive(FileStatus base, FileSystem fs, List<FileStatus> results) throws IOException {
+    if (!base.isDirectory()) {
+      results.add(base);
+      return;
+    }
+    RemoteIterator<LocatedFileStatus> remoteIterator = fs.listFiles(base.getPath(), true);
+    while (remoteIterator.hasNext()) {
+      LocatedFileStatus each = remoteIterator.next();
+      Path relativePath = new Path(each.getPath().toString().replace(base.toString(), ""));
+      if (org.apache.hadoop.hive.metastore.utils.FileUtils.RemoteIteratorWithFilter.HIDDEN_FILES_FULL_PATH_FILTER.accept(relativePath)) {
+        results.add(each);
+      }
+    }
+  }
+
+  public static boolean isS3a(FileSystem fs) {
+    try {
+      return "s3a".equalsIgnoreCase(fs.getScheme());
+    } catch (UnsupportedOperationException ex) {
+      return false;
     }
   }
 
@@ -558,7 +585,13 @@ public final class FileUtils {
       return true;
     }
     // check all children
-    FileStatus[] childStatuses = fs.listStatus(fileStatus.getPath());
+    FileStatus[] childStatuses = null;
+    try {
+      childStatuses = fs.listStatus(fileStatus.getPath());
+    } catch (FileNotFoundException fe) {
+      LOG.debug("Skipping child access check since the directory is already removed");
+      return true;
+    }
     for (FileStatus childStatus : childStatuses) {
       // check children recursively - recurse is true if we're here.
       if (!checkIsOwnerOfFileHierarchy(fs, childStatus, userName, true)) {
@@ -636,16 +669,18 @@ public final class FileUtils {
   }
 
   public static boolean distCp(FileSystem srcFS, List<Path> srcPaths, Path dst,
-      boolean deleteSource, String doAsUser,
+      boolean deleteSource, UserGroupInformation proxyUser,
       HiveConf conf, HadoopShims shims) throws IOException {
+    LOG.debug("copying srcPaths : {}, to DestPath :{} ,with doAs: {}",
+        StringUtils.join(",", srcPaths), dst.toString(), proxyUser);
     boolean copied = false;
-    if (doAsUser == null){
+    if (proxyUser == null){
       copied = shims.runDistCp(srcPaths, dst, conf);
     } else {
-      copied = shims.runDistCpAs(srcPaths, dst, conf, doAsUser);
+      copied = shims.runDistCpAs(srcPaths, dst, conf, proxyUser);
     }
     if (copied && deleteSource) {
-      if (doAsUser != null) {
+      if (proxyUser != null) {
         // if distcp is done using doAsUser, delete also should be done using same user.
         //TODO : Need to change the delete execution within doAs if doAsUser is given.
         throw new IOException("Distcp is called with doAsUser and delete source set as true");
@@ -999,31 +1034,29 @@ public final class FileUtils {
    * @return            the list of the file names in the format of URI formats.
    */
   public static Set<String> getJarFilesByPath(String pathString, Configuration conf) {
-    Set<String> result = new HashSet<String>();
-    if (pathString == null || org.apache.commons.lang.StringUtils.isBlank(pathString)) {
-        return result;
+    if (org.apache.commons.lang.StringUtils.isBlank(pathString)) {
+      return Collections.emptySet();
     }
-
+    Set<String> result = new HashSet<>();
     String[] paths = pathString.split(",");
-    for(String path : paths) {
+    for (final String path : paths) {
       try {
         Path p = new Path(getURI(path));
         FileSystem fs = p.getFileSystem(conf);
-        if (!fs.exists(p)) {
-          LOG.error("The jar file path " + path + " doesn't exist");
-          continue;
-        }
-        if (fs.isDirectory(p)) {
+        FileStatus fileStatus = fs.getFileStatus(p);
+        if (fileStatus.isDirectory()) {
           // add all jar files under the folder
           FileStatus[] files = fs.listStatus(p, new GlobFilter("*.jar"));
-          for(FileStatus file : files) {
+          for (FileStatus file : files) {
             result.add(file.getPath().toUri().toString());
           }
         } else {
           result.add(p.toUri().toString());
         }
-      } catch(URISyntaxException | IOException e) {
-        LOG.error("Invalid file path " + path, e);
+      } catch (FileNotFoundException fnfe) {
+        LOG.error("The jar file path {} does not exist", path);
+      } catch (URISyntaxException | IOException e) {
+        LOG.error("Invalid file path {}", path, e);
       }
     }
     return result;

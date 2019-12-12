@@ -262,9 +262,7 @@ public class Hadoop23Shims extends HadoopShimsSecure {
    */
   @Override
   public void refreshDefaultQueue(Configuration conf, String userName) throws IOException {
-    if (StringUtils.isNotBlank(userName) && isFairScheduler(conf)) {
-      ShimLoader.getSchedulerShims().refreshDefaultQueue(conf, userName);
-    }
+    //no op
   }
 
   private boolean isFairScheduler (Configuration conf) {
@@ -416,6 +414,7 @@ public class Hadoop23Shims extends HadoopShimsSecure {
       conf.setInt(TezRuntimeConfiguration.TEZ_RUNTIME_IO_SORT_MB, 24);
       conf.setInt(TezRuntimeConfiguration.TEZ_RUNTIME_UNORDERED_OUTPUT_BUFFER_SIZE_MB, 10);
       conf.setFloat(TezRuntimeConfiguration.TEZ_RUNTIME_SHUFFLE_FETCH_BUFFER_PERCENT, 0.4f);
+      conf.setInt(TezConfiguration.TEZ_COUNTERS_MAX, 1024);
       conf.set("fs.defaultFS", nameNode);
       conf.set("tez.am.log.level", "DEBUG");
       conf.set(MRJobConfig.MR_AM_STAGING_DIR, "/apps_staging_dir");
@@ -1110,19 +1109,29 @@ public class Hadoop23Shims extends HadoopShimsSecure {
   private static final String DISTCP_OPTIONS_PREFIX = "distcp.options.";
 
   List<String> constructDistCpParams(List<Path> srcPaths, Path dst, Configuration conf) {
+    // -update and -delete are mandatory options for directory copy to work.
+    // -pbx is default preserve options if user doesn't pass any.
     List<String> params = new ArrayList<String>();
+    boolean needToAddPreserveOption = true;
     for (Map.Entry<String,String> entry : conf.getPropsWithPrefix(DISTCP_OPTIONS_PREFIX).entrySet()){
       String distCpOption = entry.getKey();
       String distCpVal = entry.getValue();
+      if (distCpOption.startsWith("p")) {
+        needToAddPreserveOption = false;
+      }
       params.add("-" + distCpOption);
       if ((distCpVal != null) && (!distCpVal.isEmpty())){
         params.add(distCpVal);
       }
     }
-    if (params.size() == 0){
-      // if no entries were added via conf, we initiate our defaults
-      params.add("-update");
+    if (needToAddPreserveOption) {
       params.add("-pbx");
+    }
+    if (!params.contains("-update")) {
+      params.add("-update");
+    }
+    if (!params.contains("-delete")) {
+      params.add("-delete");
     }
     for (Path src : srcPaths) {
       params.add(src.toString());
@@ -1132,9 +1141,8 @@ public class Hadoop23Shims extends HadoopShimsSecure {
   }
 
   @Override
-  public boolean runDistCpAs(List<Path> srcPaths, Path dst, Configuration conf, String doAsUser) throws IOException {
-    UserGroupInformation proxyUser = UserGroupInformation.createProxyUser(
-        doAsUser, UserGroupInformation.getLoginUser());
+  public boolean runDistCpAs(List<Path> srcPaths, Path dst, Configuration conf,
+                             UserGroupInformation proxyUser) throws IOException {
     try {
       return proxyUser.doAs(new PrivilegedExceptionAction<Boolean>() {
         @Override
@@ -1150,10 +1158,11 @@ public class Hadoop23Shims extends HadoopShimsSecure {
   @Override
   public boolean runDistCp(List<Path> srcPaths, Path dst, Configuration conf) throws IOException {
        DistCpOptions options = new DistCpOptions.Builder(srcPaths, dst)
-        .withSyncFolder(true)
-        .withCRC(true)
-        .preserve(FileAttribute.BLOCKSIZE)
-        .build();
+               .withSyncFolder(true)
+               .withDeleteMissing(true)
+               .preserve(FileAttribute.BLOCKSIZE)
+               .preserve(FileAttribute.XATTR)
+               .build();
 
     // Creates the command-line parameters for distcp
     List<String> params = constructDistCpParams(srcPaths, dst, conf);

@@ -148,6 +148,7 @@ STAGE PLANS:
                       Statistics: Num rows: 1000 Data size: 617000 Basic stats: COMPLETE Column stats: PARTIAL
                       Reduce Output Operator
                         key expressions: _col0 (type: struct<writeid:bigint,bucketid:int,rowid:bigint>)
+                        null sort order: z
                         sort order: +
                         Map-reduce partition columns: UDFToInteger(_col0) (type: int)
                         Statistics: Num rows: 1000 Data size: 617000 Basic stats: COMPLETE Column stats: PARTIAL
@@ -306,19 +307,19 @@ PREHOOK: Input: default@srcpart_acid
 POSTHOOK: query: describe formatted srcpart_acid key
 POSTHOOK: type: DESCTABLE
 POSTHOOK: Input: default@srcpart_acid
-col_name            	key                 	 	 	 	 	 	 	 	 	 	 
-data_type           	string              	 	 	 	 	 	 	 	 	 	 
-min                 	                    	 	 	 	 	 	 	 	 	 	 
-max                 	                    	 	 	 	 	 	 	 	 	 	 
-num_nulls           	0                   	 	 	 	 	 	 	 	 	 	 
-distinct_count      	316                 	 	 	 	 	 	 	 	 	 	 
-avg_col_len         	2.812               	 	 	 	 	 	 	 	 	 	 
-max_col_len         	3                   	 	 	 	 	 	 	 	 	 	 
-num_trues           	                    	 	 	 	 	 	 	 	 	 	 
-num_falses          	                    	 	 	 	 	 	 	 	 	 	 
-bitVector           	HL                  	 	 	 	 	 	 	 	 	 	 
-comment             	from deserializer   	 	 	 	 	 	 	 	 	 	 
-COLUMN_STATS_ACCURATE	{}                  	 	 	 	 	 	 	 	 	 	 
+col_name            	key                 
+data_type           	string              
+min                 	                    
+max                 	                    
+num_nulls           	0                   
+distinct_count      	316                 
+avg_col_len         	2.812               
+max_col_len         	3                   
+num_trues           	                    
+num_falses          	                    
+bit_vector          	HL                  
+comment             	from deserializer   
+COLUMN_STATS_ACCURATE	{\"COLUMN_STATS\":{\"key\":\"true\"}}
 PREHOOK: query: analyze table srcpart_acid PARTITION(ds, hr) compute statistics
 PREHOOK: type: QUERY
 PREHOOK: Input: default@srcpart_acid
@@ -418,19 +419,19 @@ PREHOOK: Input: default@srcpart_acid
 POSTHOOK: query: describe formatted srcpart_acid key
 POSTHOOK: type: DESCTABLE
 POSTHOOK: Input: default@srcpart_acid
-col_name            	key                 	 	 	 	 	 	 	 	 	 	 
-data_type           	string              	 	 	 	 	 	 	 	 	 	 
-min                 	                    	 	 	 	 	 	 	 	 	 	 
-max                 	                    	 	 	 	 	 	 	 	 	 	 
-num_nulls           	0                   	 	 	 	 	 	 	 	 	 	 
-distinct_count      	316                 	 	 	 	 	 	 	 	 	 	 
-avg_col_len         	2.812               	 	 	 	 	 	 	 	 	 	 
-max_col_len         	3                   	 	 	 	 	 	 	 	 	 	 
-num_trues           	                    	 	 	 	 	 	 	 	 	 	 
-num_falses          	                    	 	 	 	 	 	 	 	 	 	 
-bitVector           	HL                  	 	 	 	 	 	 	 	 	 	 
-comment             	from deserializer   	 	 	 	 	 	 	 	 	 	 
-COLUMN_STATS_ACCURATE	{}                  	 	 	 	 	 	 	 	 	 	 
+col_name            	key                 
+data_type           	string              
+min                 	                    
+max                 	                    
+num_nulls           	0                   
+distinct_count      	320                 
+avg_col_len         	2.8190854870775346  
+max_col_len         	4                   
+num_trues           	                    
+num_falses          	                    
+bit_vector          	HL                  
+comment             	from deserializer   
+COLUMN_STATS_ACCURATE	{\"COLUMN_STATS\":{\"key\":\"true\"}}
 PREHOOK: query: explain delete from srcpart_acid where key in( '1001', '213', '43')
 PREHOOK: type: QUERY
 PREHOOK: Input: default@srcpart_acid
@@ -482,6 +483,7 @@ STAGE PLANS:
                       Statistics: Num rows: 19 Data size: 8436 Basic stats: COMPLETE Column stats: PARTIAL
                       Reduce Output Operator
                         key expressions: _col0 (type: struct<writeid:bigint,bucketid:int,rowid:bigint>)
+                        null sort order: z
                         sort order: +
                         Map-reduce partition columns: UDFToInteger(_col0) (type: int)
                         Statistics: Num rows: 19 Data size: 8436 Basic stats: COMPLETE Column stats: PARTIAL
@@ -809,6 +811,7 @@ STAGE PLANS:
                       Statistics: Num rows: 1000 Data size: 617000 Basic stats: COMPLETE Column stats: PARTIAL
                       Reduce Output Operator
                         key expressions: _col0 (type: struct<writeid:bigint,bucketid:int,rowid:bigint>)
+                        null sort order: z
                         sort order: +
                         Map-reduce partition columns: UDFToInteger(_col0) (type: int)
                         Statistics: Num rows: 1000 Data size: 617000 Basic stats: COMPLETE Column stats: PARTIAL
@@ -1019,6 +1022,7 @@ STAGE PLANS:
                       Statistics: Num rows: 19 Data size: 8436 Basic stats: COMPLETE Column stats: PARTIAL
                       Reduce Output Operator
                         key expressions: _col0 (type: struct<writeid:bigint,bucketid:int,rowid:bigint>)
+                        null sort order: z
                         sort order: +
                         Map-reduce partition columns: UDFToInteger(_col0) (type: int)
                         Statistics: Num rows: 19 Data size: 8436 Basic stats: COMPLETE Column stats: PARTIAL
@@ -1343,19 +1347,19 @@ STAGE PLANS:
                     Filter Vectorization:
                         className: VectorFilterOperator
                         native: true
-                        predicateExpression: FilterExprOrExpr(children: FilterLongColEqualLongScalar(col 5:int, val 413)(children: CastStringToLong(col 0:string) -> 5:int), FilterLongColEqualLongScalar(col 5:int, val 43)(children: CastStringToLong(col 0:string) -> 5:int))
+                        predicateExpression: FilterExprOrExpr(children: FilterLongColEqualLongScalar(col 5:int, val 413)(children: CastStringToLong(col 0:string) -> 5:int), FilterLongColEqualLongScalar(col 6:int, val 43)(children: CastStringToLong(col 0:string) -> 6:int))
                       Select Vectorization:
                           className: VectorSelectOperator
                           native: true
-                          projectedOutputColumnNums: [4, 0, 6, 2]
-                          selectExpressions: StringGroupColConcatStringScalar(col 1:string, val updated) -> 6:string
+                          projectedOutputColumnNums: [4, 0, 7, 2]
+                          selectExpressions: StringGroupColConcatStringScalar(col 1:string, val updated) -> 7:string
                         Reduce Sink Vectorization:
                             className: VectorReduceSinkObjectHashOperator
                             keyColumns: 4:struct<writeid:bigint,bucketid:int,rowid:bigint>
                             native: true
                             nativeConditionsMet: hive.vectorized.execution.reducesink.new.enabled IS true, hive.execution.engine tez IN [tez, spark] IS true, No PTF TopN IS true, No DISTINCT columns IS true, BinarySortableSerDe for keys IS true, LazyBinarySerDe for values IS true
                             partitionColumns: 5:int
-                            valueColumns: 0:string, 6:string, 2:string
+                            valueColumns: 0:string, 7:string, 2:string
             Execution mode: vectorized, llap
             LLAP IO: may be used (ACID table)
             Map Vectorization:
@@ -1374,7 +1378,7 @@ STAGE PLANS:
                     neededVirtualColumns: [ROWID]
                     partitionColumnCount: 2
                     partitionColumns: ds:string, hr:string
-                    scratchColumnTypeNames: [bigint, string]
+                    scratchColumnTypeNames: [bigint, bigint, string]
         Reducer 2 
             Execution mode: vectorized, llap
             Reduce Vectorization:
@@ -1742,7 +1746,7 @@ STAGE PLANS:
     Tez
       Edges:
         Reducer 2 <- Map 1 (SIMPLE_EDGE)
-        Reducer 3 <- Map 8 (SIMPLE_EDGE), Reducer 2 (ONE_TO_ONE_EDGE)
+        Reducer 3 <- Map 8 (SIMPLE_EDGE), Reducer 2 (SIMPLE_EDGE)
         Reducer 4 <- Reducer 3 (SIMPLE_EDGE)
         Reducer 5 <- Reducer 3 (SIMPLE_EDGE)
         Reducer 6 <- Reducer 3 (SIMPLE_EDGE)
@@ -1765,11 +1769,10 @@ STAGE PLANS:
                           vectorProcessingMode: HASH
                           projectedOutputColumnNums: []
                         Reduce Sink Vectorization:
-                            className: VectorReduceSinkObjectHashOperator
+                            className: VectorReduceSinkMultiKeyOperator
                             keyColumns: 0:string, 1:string, 2:string, 3:string
                             native: true
                             nativeConditionsMet: hive.vectorized.execution.reducesink.new.enabled IS true, hive.execution.engine tez IN [tez, spark] IS true, No PTF TopN IS true, No DISTINCT columns IS true, BinarySortableSerDe for keys IS true, LazyBinarySerDe for values IS true
-                            partitionColumns: 0:string, 1:string, 2:string, 3:string
             Execution mode: vectorized, llap
             LLAP IO: may be used (ACID table)
             Map Vectorization:
@@ -1794,11 +1797,10 @@ STAGE PLANS:
                       native: true
                       vectorizationSchemaColumns: [0:key:string, 1:value:string, 2:ds:string, 3:hr:string, 4:ROW__ID:struct<writeid:bigint,bucketid:int,rowid:bigint>]
                     Reduce Sink Vectorization:
-                        className: VectorReduceSinkObjectHashOperator
+                        className: VectorReduceSinkMultiKeyOperator
                         keyColumns: 2:string, 3:string, 0:string, 1:string
                         native: true
                         nativeConditionsMet: hive.vectorized.execution.reducesink.new.enabled IS true, hive.execution.engine tez IN [tez, spark] IS true, No PTF TopN IS true, No DISTINCT columns IS true, BinarySortableSerDe for keys IS true, LazyBinarySerDe for values IS true
-                        partitionColumns: 2:string, 3:string, 0:string, 1:string
                         valueColumns: 4:struct<writeid:bigint,bucketid:int,rowid:bigint>
             Execution mode: vectorized, llap
             LLAP IO: may be used (ACID table)
@@ -1843,11 +1845,10 @@ STAGE PLANS:
                     vectorProcessingMode: MERGE_PARTIAL
                     projectedOutputColumnNums: []
                   Reduce Sink Vectorization:
-                      className: VectorReduceSinkObjectHashOperator
+                      className: VectorReduceSinkMultiKeyOperator
                       keyColumns: 0:string, 1:string, 2:string, 3:string
                       native: true
                       nativeConditionsMet: hive.vectorized.execution.reducesink.new.enabled IS true, hive.execution.engine tez IN [tez, spark] IS true, No PTF TopN IS true, No DISTINCT columns IS true, BinarySortableSerDe for keys IS true, LazyBinarySerDe for values IS true
-                      partitionColumns: 0:string, 1:string, 2:string, 3:string
                   Select Vectorization:
                       className: VectorSelectOperator
                       native: true
@@ -2193,19 +2194,19 @@ STAGE PLANS:
                     Filter Vectorization:
                         className: VectorFilterOperator
                         native: true
-                        predicateExpression: FilterExprOrExpr(children: FilterLongColEqualLongScalar(col 5:int, val 413)(children: CastStringToLong(col 0:string) -> 5:int), FilterLongColEqualLongScalar(col 5:int, val 43)(children: CastStringToLong(col 0:string) -> 5:int))
+                        predicateExpression: FilterExprOrExpr(children: FilterLongColEqualLongScalar(col 5:int, val 413)(children: CastStringToLong(col 0:string) -> 5:int), FilterLongColEqualLongScalar(col 6:int, val 43)(children: CastStringToLong(col 0:string) -> 6:int))
                       Select Vectorization:
                           className: VectorSelectOperator
                           native: true
-                          projectedOutputColumnNums: [4, 0, 6, 2]
-                          selectExpressions: StringGroupColConcatStringScalar(col 1:string, val updated) -> 6:string
+                          projectedOutputColumnNums: [4, 0, 7, 2]
+                          selectExpressions: StringGroupColConcatStringScalar(col 1:string, val updated) -> 7:string
                         Reduce Sink Vectorization:
                             className: VectorReduceSinkObjectHashOperator
                             keyColumns: 4:struct<writeid:bigint,bucketid:int,rowid:bigint>
                             native: true
                             nativeConditionsMet: hive.vectorized.execution.reducesink.new.enabled IS true, hive.execution.engine tez IN [tez, spark] IS true, No PTF TopN IS true, No DISTINCT columns IS true, BinarySortableSerDe for keys IS true, LazyBinarySerDe for values IS true
                             partitionColumns: 5:int
-                            valueColumns: 0:string, 6:string, 2:string
+                            valueColumns: 0:string, 7:string, 2:string
             Execution mode: vectorized, llap
             LLAP IO: may be used (ACID table)
             Map Vectorization:
@@ -2224,7 +2225,7 @@ STAGE PLANS:
                     neededVirtualColumns: [ROWID]
                     partitionColumnCount: 2
                     partitionColumns: ds:string, hr:string
-                    scratchColumnTypeNames: [bigint, string]
+                    scratchColumnTypeNames: [bigint, bigint, string]
         Reducer 2 
             Execution mode: vectorized, llap
             Reduce Vectorization:
@@ -2592,11 +2593,11 @@ STAGE PLANS:
     Tez
       Edges:
         Reducer 2 <- Map 1 (SIMPLE_EDGE)
-        Reducer 3 <- Map 9 (SIMPLE_EDGE), Reducer 2 (ONE_TO_ONE_EDGE)
+        Reducer 3 <- Map 9 (SIMPLE_EDGE), Reducer 2 (SIMPLE_EDGE)
         Reducer 4 <- Reducer 3 (SIMPLE_EDGE)
         Reducer 5 <- Reducer 3 (SIMPLE_EDGE)
         Reducer 6 <- Reducer 3 (SIMPLE_EDGE)
-        Reducer 7 <- Reducer 3 (CUSTOM_SIMPLE_EDGE)
+        Reducer 7 <- Reducer 3 (SIMPLE_EDGE)
         Reducer 8 <- Reducer 7 (SIMPLE_EDGE)
       Vertices:
         Map 1 
@@ -2616,11 +2617,10 @@ STAGE PLANS:
                           vectorProcessingMode: HASH
                           projectedOutputColumnNums: []
                         Reduce Sink Vectorization:
-                            className: VectorReduceSinkObjectHashOperator
+                            className: VectorReduceSinkMultiKeyOperator
                             keyColumns: 0:string, 1:string, 2:string, 3:string
                             native: true
                             nativeConditionsMet: hive.vectorized.execution.reducesink.new.enabled IS true, hive.execution.engine tez IN [tez, spark] IS true, No PTF TopN IS true, No DISTINCT columns IS true, BinarySortableSerDe for keys IS true, LazyBinarySerDe for values IS true
-                            partitionColumns: 0:string, 1:string, 2:string, 3:string
             Execution mode: vectorized, llap
             LLAP IO: may be used (ACID table)
             Map Vectorization:
@@ -2645,11 +2645,10 @@ STAGE PLANS:
                       native: true
                       vectorizationSchemaColumns: [0:key:string, 1:value:string, 2:ds:string, 3:hr:string, 4:ROW__ID:struct<writeid:bigint,bucketid:int,rowid:bigint>]
                     Reduce Sink Vectorization:
-                        className: VectorReduceSinkObjectHashOperator
+                        className: VectorReduceSinkMultiKeyOperator
                         keyColumns: 2:string, 3:string, 0:string, 1:string
                         native: true
                         nativeConditionsMet: hive.vectorized.execution.reducesink.new.enabled IS true, hive.execution.engine tez IN [tez, spark] IS true, No PTF TopN IS true, No DISTINCT columns IS true, BinarySortableSerDe for keys IS true, LazyBinarySerDe for values IS true
-                        partitionColumns: 2:string, 3:string, 0:string, 1:string
                         valueColumns: 4:struct<writeid:bigint,bucketid:int,rowid:bigint>
             Execution mode: vectorized, llap
             LLAP IO: may be used (ACID table)
@@ -2694,11 +2693,10 @@ STAGE PLANS:
                     vectorProcessingMode: MERGE_PARTIAL
                     projectedOutputColumnNums: []
                   Reduce Sink Vectorization:
-                      className: VectorReduceSinkObjectHashOperator
+                      className: VectorReduceSinkMultiKeyOperator
                       keyColumns: 0:string, 1:string, 2:string, 3:string
                       native: true
                       nativeConditionsMet: hive.vectorized.execution.reducesink.new.enabled IS true, hive.execution.engine tez IN [tez, spark] IS true, No PTF TopN IS true, No DISTINCT columns IS true, BinarySortableSerDe for keys IS true, LazyBinarySerDe for values IS true
-                      partitionColumns: 0:string, 1:string, 2:string, 3:string
                   Select Vectorization:
                       className: VectorSelectOperator
                       native: true

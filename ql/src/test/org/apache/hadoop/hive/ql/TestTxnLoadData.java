@@ -20,7 +20,7 @@ package org.apache.hadoop.hive.ql;
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.conf.MetastoreConf;
-import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
+import org.apache.hadoop.hive.ql.processors.CommandProcessorException;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
@@ -123,13 +123,24 @@ public class TestTxnLoadData extends TxnCommandsBaseForTests {
     checkResult(expected2, testQuery, isVectorized, "update");
 
     runStatementOnDriver("insert into T values(2,2)");
+    String[][] expectedInter2 = new String[][] {
+        {"{\"writeid\":1,\"bucketid\":536870912,\"rowid\":1}\t3\t4", "t/delta_0000001_0000001_0000/000000_0"},
+        {"{\"writeid\":2,\"bucketid\":536870912,\"rowid\":0}\t1\t17", "t/delta_0000002_0000002_0000/bucket_00000"},
+        {"{\"writeid\":3,\"bucketid\":536870912,\"rowid\":0}\t2\t2", "t/delta_0000003_0000003_0000/bucket_00000"}
+    };
+    checkResult(expectedInter2, testQuery, isVectorized, "insert");
     runStatementOnDriver("delete from T where a = 3");
+    String[][] expectedInter3 = new String[][] {
+        {"{\"writeid\":2,\"bucketid\":536870912,\"rowid\":0}\t1\t17", "t/delta_0000002_0000002_0000/bucket_00000"},
+        {"{\"writeid\":3,\"bucketid\":536870912,\"rowid\":0}\t2\t2", "t/delta_0000003_0000003_0000/bucket_00000"}
+    };
+    checkResult(expectedInter3, testQuery, isVectorized, "delete");
     //test minor compaction
     runStatementOnDriver("alter table T compact 'minor'");
     TestTxnCommands2.runWorker(hiveConf);
     String[][] expected3 = new String[][] {
-        {"{\"writeid\":2,\"bucketid\":536870912,\"rowid\":0}\t1\t17", "t/delta_0000001_0000004_v0000029/bucket_00000"},
-        {"{\"writeid\":3,\"bucketid\":536870912,\"rowid\":0}\t2\t2", "t/delta_0000001_0000004_v0000029/bucket_00000"}
+        {"{\"writeid\":2,\"bucketid\":536870912,\"rowid\":0}\t1\t17", "t/delta_0000001_0000004_v0000033/bucket_00000"},
+        {"{\"writeid\":3,\"bucketid\":536870912,\"rowid\":0}\t2\t2", "t/delta_0000001_0000004_v0000033/bucket_00000"}
     };
     checkResult(expected3, testQuery, isVectorized, "delete compact minor");
 
@@ -141,6 +152,13 @@ public class TestTxnLoadData extends TxnCommandsBaseForTests {
 
     //load same data again (additive)
     runStatementOnDriver("load data local inpath '" + getWarehouseDir() + "/1/data' into table T");
+    String[][] expectedInt1 = new String[][] {
+        {"{\"writeid\":5,\"bucketid\":536870912,\"rowid\":0}\t1\t2", "t/base_0000005/000000_0"},
+        {"{\"writeid\":5,\"bucketid\":536870912,\"rowid\":1}\t3\t4", "t/base_0000005/000000_0"},
+        {"{\"writeid\":6,\"bucketid\":536870912,\"rowid\":0}\t1\t2", "t/delta_0000006_0000006_0000/000000_0"},
+        {"{\"writeid\":6,\"bucketid\":536870912,\"rowid\":1}\t3\t4", "t/delta_0000006_0000006_0000/000000_0"}
+    };
+    checkResult(expectedInt1, testQuery, isVectorized, "load data local inpath");
     runStatementOnDriver("update T set b = 17 where a = 1");//matches 2 rows
     runStatementOnDriver("delete from T where a = 3");//matches 2 rows
     runStatementOnDriver("insert into T values(2,2)");
@@ -155,9 +173,9 @@ public class TestTxnLoadData extends TxnCommandsBaseForTests {
     runStatementOnDriver("alter table T compact 'major'");
     TestTxnCommands2.runWorker(hiveConf);
     String[][] expected6 = new String[][]{
-        {"{\"writeid\":7,\"bucketid\":536870912,\"rowid\":0}\t1\t17", "t/base_0000009_v0000042/bucket_00000"},
-        {"{\"writeid\":7,\"bucketid\":536870912,\"rowid\":1}\t1\t17", "t/base_0000009_v0000042/bucket_00000"},
-        {"{\"writeid\":9,\"bucketid\":536870912,\"rowid\":0}\t2\t2", "t/base_0000009_v0000042/bucket_00000"}
+        {"{\"writeid\":7,\"bucketid\":536870912,\"rowid\":0}\t1\t17", "t/base_0000009_v0000048/bucket_00000"},
+        {"{\"writeid\":7,\"bucketid\":536870912,\"rowid\":1}\t1\t17", "t/base_0000009_v0000048/bucket_00000"},
+        {"{\"writeid\":9,\"bucketid\":536870912,\"rowid\":0}\t2\t2", "t/base_0000009_v0000048/bucket_00000"}
     };
     checkResult(expected6, testQuery, isVectorized, "load data inpath compact major");
   }
@@ -489,9 +507,9 @@ public class TestTxnLoadData extends TxnCommandsBaseForTests {
     Assert.assertTrue("Unexpcted file name", rs.get(0)
         .endsWith("t/delta_0000001_0000001_0000/bucket_00000"));
     //T2 is an acid table so this should fail
-    CommandProcessorResponse cpr = runStatementOnDriverNegative(
-        "load data local inpath '" + rs.get(0) + "' into table T2");
+    CommandProcessorException e =
+        runStatementOnDriverNegative("load data local inpath '" + rs.get(0) + "' into table T2");
     Assert.assertEquals("Unexpected error code",
-        ErrorMsg.LOAD_DATA_ACID_FILE.getErrorCode(), cpr.getErrorCode());
+        ErrorMsg.LOAD_DATA_ACID_FILE.getErrorCode(), e.getErrorCode());
   }
 }

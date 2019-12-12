@@ -49,6 +49,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import java.util.concurrent.TimeUnit;
 
 import static junit.framework.Assert.assertEquals;
 import static junit.framework.Assert.assertFalse;
@@ -88,8 +89,8 @@ public class TestCompactionTxnHandler {
     assertEquals(CompactionType.MINOR, ci.type);
     assertNull(ci.runAs);
     assertNull(txnHandler.findNextToCompact("fred"));
-
-    txnHandler.setRunAs(ci.id, "bob");
+    ci.runAs = "bob";
+    txnHandler.updateCompactorState(ci, openTxn());
 
     ShowCompactResponse rsp = txnHandler.showCompact(new ShowCompactRequest());
     List<ShowCompactResponseElement> compacts = rsp.getCompacts();
@@ -379,6 +380,24 @@ public class TestCompactionTxnHandler {
     }
     assertTrue(sawMyTable);
     assertTrue(sawYourTable);
+
+    potentials = txnHandler.findPotentialCompactions(100, 1);
+    assertEquals(2, potentials.size());
+
+    //simulate auto-compaction interval
+    TimeUnit.SECONDS.sleep(2);
+
+    potentials = txnHandler.findPotentialCompactions(100, 1);
+    assertEquals(0, potentials.size());
+
+    //simulate prev failed compaction
+    CompactionRequest rqst = new CompactionRequest("mydb", "mytable", CompactionType.MINOR);
+    txnHandler.compact(rqst);
+    CompactionInfo ci = txnHandler.findNextToCompact("fred");
+    txnHandler.markFailed(ci);
+
+    potentials = txnHandler.findPotentialCompactions(100, 1);
+    assertEquals(1, potentials.size());
   }
 
   // TODO test changes to mark cleaned to clean txns and txn_components

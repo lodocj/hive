@@ -36,6 +36,7 @@ import org.apache.hadoop.hive.common.type.HiveChar;
 import org.apache.hadoop.hive.common.type.HiveDecimal;
 import org.apache.hadoop.hive.common.type.HiveIntervalDayTime;
 import org.apache.hadoop.hive.common.type.HiveIntervalYearMonth;
+import org.apache.hadoop.hive.common.type.HiveVarchar;
 import org.apache.hadoop.hive.common.type.Timestamp;
 import org.apache.hadoop.hive.common.type.TimestampTZUtil;
 import org.apache.hadoop.hive.conf.HiveConf;
@@ -48,7 +49,7 @@ import org.apache.hadoop.hive.ql.exec.UDFArgumentLengthException;
 import org.apache.hadoop.hive.ql.exec.UDFArgumentTypeException;
 import org.apache.hadoop.hive.ql.lib.DefaultRuleDispatcher;
 import org.apache.hadoop.hive.ql.lib.Dispatcher;
-import org.apache.hadoop.hive.ql.lib.ExpressionWalker;
+import org.apache.hadoop.hive.ql.lib.SubqueryExpressionWalker;
 import org.apache.hadoop.hive.ql.lib.GraphWalker;
 import org.apache.hadoop.hive.ql.lib.Node;
 import org.apache.hadoop.hive.ql.lib.NodeProcessor;
@@ -71,8 +72,8 @@ import org.apache.hadoop.hive.ql.plan.ExprNodeSubQueryDesc;
 import org.apache.hadoop.hive.ql.udf.SettableUDF;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFBaseCompare;
+import org.apache.hadoop.hive.ql.udf.generic.GenericUDFCoalesce;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFIn;
-import org.apache.hadoop.hive.ql.udf.generic.GenericUDFNvl;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPAnd;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPEqual;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPEqualNS;
@@ -106,6 +107,7 @@ import org.apache.hive.common.util.DateUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Lists;
 
 
@@ -234,7 +236,7 @@ public class TypeCheckProcFactory {
     // rule and passes the context along
     Dispatcher disp = new DefaultRuleDispatcher(tf.getDefaultExprProcessor(),
         opRules, tcCtx);
-    GraphWalker ogw = new ExpressionWalker(disp);
+    GraphWalker ogw = new SubqueryExpressionWalker(disp);
 
     // Create a list of top nodes
     ArrayList<Node> topNodes = Lists.<Node>newArrayList(expr);
@@ -330,6 +332,9 @@ public class TypeCheckProcFactory {
           // Literal decimal
           String strVal = expr.getText().substring(0, expr.getText().length() - 2);
           return createDecimal(strVal, false);
+        } else if (expr.getText().endsWith("F")) {
+          // Literal float.
+          v = Float.valueOf(expr.getText().substring(0, expr.getText().length() - 1));
         } else if (expr.getText().endsWith("D")) {
           // Literal double.
           v = Double.valueOf(expr.getText().substring(0, expr.getText().length() - 1));
@@ -764,6 +769,7 @@ public class TypeCheckProcFactory {
     ExprNodeConstantDesc constantExpr =
         new ExprNodeConstantDesc(colInfo.getType(), poi.getPrimitiveJavaObject(constant));
     constantExpr.setFoldedFromCol(colInfo.getInternalName());
+    constantExpr.setFoldedFromTab(colInfo.getTabAlias());
     return constantExpr;
   }
 
@@ -778,6 +784,7 @@ public class TypeCheckProcFactory {
 
     ExprNodeConstantDesc constantExpr = new ExprNodeConstantDesc(colInfo.getType(), constant);
     constantExpr.setFoldedFromCol(colInfo.getInternalName());
+    constantExpr.setFoldedFromTab(colInfo.getTabAlias());
     return constantExpr;
   }
 
@@ -793,6 +800,7 @@ public class TypeCheckProcFactory {
 
     ExprNodeConstantDesc constantExpr = new ExprNodeConstantDesc(colInfo.getType(), constant);
     constantExpr.setFoldedFromCol(colInfo.getInternalName());
+    constantExpr.setFoldedFromTab(colInfo.getTabAlias());
     return constantExpr;
   }
 
@@ -808,6 +816,7 @@ public class TypeCheckProcFactory {
 
     ExprNodeConstantDesc constantExpr = new ExprNodeConstantDesc(colInfo.getType(), constant);
     constantExpr.setFoldedFromCol(colInfo.getInternalName());
+    constantExpr.setFoldedFromTab(colInfo.getTabAlias());
     return constantExpr;
   }
 
@@ -1211,16 +1220,26 @@ public class TypeCheckProcFactory {
             }
             outputOpList.add(nullConst);
           }
+
           if (!ctx.isCBOExecuted()) {
-            ArrayList<ExprNodeDesc> orOperands = TypeCheckProcFactoryUtils.rewriteInToOR(children);
-            if (orOperands != null) {
-              if (orOperands.size() == 1) {
-                orOperands.add(new ExprNodeConstantDesc(TypeInfoFactory.booleanTypeInfo, false));
+
+            HiveConf conf;
+            try {
+              conf = Hive.get().getConf();
+            } catch (HiveException e) {
+              throw new SemanticException(e);
+            }
+            if( children.size() <= HiveConf.getIntVar(conf, HiveConf.ConfVars.HIVEOPT_TRANSFORM_IN_MAXNODES)) {
+              ArrayList<ExprNodeDesc> orOperands = TypeCheckProcFactoryUtils.rewriteInToOR(children);
+              if (orOperands != null) {
+                if (orOperands.size() == 1) {
+                  orOperands.add(new ExprNodeConstantDesc(TypeInfoFactory.booleanTypeInfo, false));
+                }
+                funcText = "or";
+                genericUDF = new GenericUDFOPOr();
+                children.clear();
+                children.addAll(orOperands);
               }
-              funcText = "or";
-              genericUDF = new GenericUDFOPOr();
-              children.clear();
-              children.addAll(orOperands);
             }
           }
         }
@@ -1229,6 +1248,9 @@ public class TypeCheckProcFactory {
           List<ExprNodeDesc> childrenList = new ArrayList<ExprNodeDesc>(
               children.size());
           for (ExprNodeDesc child : children) {
+            if (TypeInfoFactory.getPrimitiveTypeInfo("void").equals(child.getTypeInfo())) {
+              child.setTypeInfo(TypeInfoFactory.getPrimitiveTypeInfo("boolean"));
+            }
             if (FunctionRegistry.isOpOr(child)) {
               childrenList.addAll(child.getChildren());
             } else {
@@ -1242,6 +1264,9 @@ public class TypeCheckProcFactory {
           List<ExprNodeDesc> childrenList = new ArrayList<ExprNodeDesc>(
               children.size());
           for (ExprNodeDesc child : children) {
+            if (TypeInfoFactory.getPrimitiveTypeInfo("void").equals(child.getTypeInfo())) {
+              child.setTypeInfo(TypeInfoFactory.getPrimitiveTypeInfo("boolean"));
+            }
             if (FunctionRegistry.isOpAnd(child)) {
               childrenList.addAll(child.getChildren());
             } else {
@@ -1250,9 +1275,9 @@ public class TypeCheckProcFactory {
           }
           desc = ExprNodeGenericFuncDesc.newInstance(genericUDF, funcText,
               childrenList);
-        } else if (ctx.isFoldExpr() && canConvertIntoNvl(genericUDF, children)) {
-          // Rewrite CASE into NVL
-          desc = ExprNodeGenericFuncDesc.newInstance(new GenericUDFNvl(),
+        } else if (ctx.isFoldExpr() && canConvertIntoCoalesce(genericUDF, children)) {
+          // Rewrite CASE into COALESCE
+          desc = ExprNodeGenericFuncDesc.newInstance(new GenericUDFCoalesce(),
                   Lists.newArrayList(children.get(0), new ExprNodeConstantDesc(false)));
           if (Boolean.FALSE.equals(((ExprNodeConstantDesc) children.get(1)).getValue())) {
             desc = ExprNodeGenericFuncDesc.newInstance(new GenericUDFOPNot(),
@@ -1339,7 +1364,8 @@ public class TypeCheckProcFactory {
       return valueDesc;
     }
 
-    private static ExprNodeDesc interpretNodeAs(PrimitiveTypeInfo colTypeInfo, ExprNodeDesc constChild) {
+    @VisibleForTesting
+    protected static ExprNodeDesc interpretNodeAs(PrimitiveTypeInfo colTypeInfo, ExprNodeDesc constChild) {
       if (constChild instanceof ExprNodeConstantDesc) {
         // Try to narrow type of constant
         Object constVal = ((ExprNodeConstantDesc) constChild).getValue();
@@ -1367,32 +1393,36 @@ public class TypeCheckProcFactory {
       return colTypeInfo;
     }
 
+    private static BigDecimal toBigDecimal(String val) {
+      if (!NumberUtils.isNumber(val)) {
+        throw new NumberFormatException("The given string is not a valid number: " + val);
+      }
+      return new BigDecimal(val.replaceAll("[dDfFlL]$", ""));
+    }
+
     private static Object interpretConstantAsPrimitive(PrimitiveTypeInfo colTypeInfo, Object constVal,
         TypeInfo constTypeInfo) {
-      String constTypeInfoName = constTypeInfo.getTypeName();
       if (constVal instanceof Number || constVal instanceof String) {
         try {
           PrimitiveTypeEntry primitiveTypeEntry = colTypeInfo.getPrimitiveTypeEntry();
           if (PrimitiveObjectInspectorUtils.intTypeEntry.equals(primitiveTypeEntry)) {
-            return (new Integer(constVal.toString()));
+            return toBigDecimal(constVal.toString()).intValueExact();
           } else if (PrimitiveObjectInspectorUtils.longTypeEntry.equals(primitiveTypeEntry)) {
-            return (new Long(constVal.toString()));
+            return toBigDecimal(constVal.toString()).longValueExact();
           } else if (PrimitiveObjectInspectorUtils.doubleTypeEntry.equals(primitiveTypeEntry)) {
-            return (new Double(constVal.toString()));
+            return Double.valueOf(constVal.toString());
           } else if (PrimitiveObjectInspectorUtils.floatTypeEntry.equals(primitiveTypeEntry)) {
-            return (new Float(constVal.toString()));
+            return Float.valueOf(constVal.toString());
           } else if (PrimitiveObjectInspectorUtils.byteTypeEntry.equals(primitiveTypeEntry)) {
-            return (new Byte(constVal.toString()));
+            return toBigDecimal(constVal.toString()).byteValueExact();
           } else if (PrimitiveObjectInspectorUtils.shortTypeEntry.equals(primitiveTypeEntry)) {
-            return (new Short(constVal.toString()));
+            return toBigDecimal(constVal.toString()).shortValueExact();
           } else if (PrimitiveObjectInspectorUtils.decimalTypeEntry.equals(primitiveTypeEntry)) {
             return HiveDecimal.create(constVal.toString());
           }
-        } catch (NumberFormatException nfe) {
+        } catch (NumberFormatException | ArithmeticException nfe) {
           LOG.trace("Failed to narrow type of constant", nfe);
-          if (!NumberUtils.isNumber(constVal.toString())) {
-            return null;
-          }
+          return null;
         }
       }
 
@@ -1409,25 +1439,40 @@ public class TypeCheckProcFactory {
         return hiveDecimal;
       }
 
-      // TODO : Char and string comparison happens in char. But, varchar and string comparison happens in String.
-
-      // if column type is char and constant type is string, then convert the constant to char
-      // type with padded spaces.
-      if (constTypeInfoName.equalsIgnoreCase(serdeConstants.STRING_TYPE_NAME) && colTypeInfo instanceof CharTypeInfo) {
-        final String constValue = constVal.toString();
-        final int length = TypeInfoUtils.getCharacterLengthForType(colTypeInfo);
-        HiveChar newValue = new HiveChar(constValue, length);
-        HiveChar maxCharConst = new HiveChar(constValue, HiveChar.MAX_CHAR_LENGTH);
-        if (maxCharConst.equals(newValue)) {
-          return newValue;
-        } else {
-          return null;
+      String constTypeInfoName = constTypeInfo.getTypeName();
+      if (constTypeInfoName.equalsIgnoreCase(serdeConstants.STRING_TYPE_NAME)) {
+        // because a comparison against a "string" will happen in "string" type.
+        // to avoid unintnetional comparisions in "string"
+        // constants which are representing char/varchar values must be converted to the
+        // appropriate type.
+        if (colTypeInfo instanceof CharTypeInfo) {
+          final String constValue = constVal.toString();
+          final int length = TypeInfoUtils.getCharacterLengthForType(colTypeInfo);
+          HiveChar newValue = new HiveChar(constValue, length);
+          HiveChar maxCharConst = new HiveChar(constValue, HiveChar.MAX_CHAR_LENGTH);
+          if (maxCharConst.equals(newValue)) {
+            return newValue;
+          } else {
+            return null;
+          }
+        }
+        if (colTypeInfo instanceof VarcharTypeInfo) {
+          final String constValue = constVal.toString();
+          final int length = TypeInfoUtils.getCharacterLengthForType(colTypeInfo);
+          HiveVarchar newValue = new HiveVarchar(constValue, length);
+          HiveVarchar maxCharConst = new HiveVarchar(constValue, HiveVarchar.MAX_VARCHAR_LENGTH);
+          if (maxCharConst.equals(newValue)) {
+            return newValue;
+          } else {
+            return null;
+          }
         }
       }
+
       return constVal;
     }
 
-    private boolean canConvertIntoNvl(GenericUDF genericUDF, ArrayList<ExprNodeDesc> children) {
+    private boolean canConvertIntoCoalesce(GenericUDF genericUDF, ArrayList<ExprNodeDesc> children) {
       if (genericUDF instanceof GenericUDFWhen && children.size() == 3 &&
               children.get(1) instanceof ExprNodeConstantDesc &&
               children.get(2) instanceof ExprNodeConstantDesc) {
@@ -1572,7 +1617,7 @@ public class TypeCheckProcFactory {
           assert child.getType() == HiveParser.TOK_TABNAME;
           assert child.getChildCount() == 1;
           String tableAlias = BaseSemanticAnalyzer.unescapeIdentifier(child.getChild(0).getText());
-          HashMap<String, ColumnInfo> columns = input.getFieldMap(tableAlias);
+          Map<String, ColumnInfo> columns = input.getFieldMap(tableAlias);
           if (columns == null) {
             throw new SemanticException(ErrorMsg.INVALID_TABLE_ALIAS.getMsg(child));
           }
@@ -1723,6 +1768,8 @@ public class TypeCheckProcFactory {
               || subqueryOp.getChild(0).getType() == HiveParser.TOK_SUBQUERY_OP_NOTIN);
       boolean isEXISTS = (subqueryOp.getChildCount() > 0) && (subqueryOp.getChild(0).getType() == HiveParser.KW_EXISTS
               || subqueryOp.getChild(0).getType() == HiveParser.TOK_SUBQUERY_OP_NOTEXISTS);
+      boolean isSOME = (subqueryOp.getChildCount() > 0) && (subqueryOp.getChild(0).getType() == HiveParser.KW_SOME);
+      boolean isALL = (subqueryOp.getChildCount() > 0) && (subqueryOp.getChild(0).getType() == HiveParser.KW_ALL);
       boolean isScalar = subqueryOp.getChildCount() == 0 ;
 
       // subqueryToRelNode might be null if subquery expression anywhere other than
@@ -1760,6 +1807,16 @@ public class TypeCheckProcFactory {
         TypeInfo subExprType = TypeConverter.convert(subqueryRel.getRowType().getFieldList().get(0).getType());
         return new ExprNodeSubQueryDesc(subExprType, subqueryRel,
                 ExprNodeSubQueryDesc.SubqueryType.SCALAR);
+      } else if(isSOME) {
+        assert(nodeOutputs[2] != null);
+        ExprNodeDesc lhs = (ExprNodeDesc)nodeOutputs[2];
+        return new ExprNodeSubQueryDesc(TypeInfoFactory.booleanTypeInfo, subqueryRel,
+            ExprNodeSubQueryDesc.SubqueryType.SOME, lhs, (ASTNode)subqueryOp.getChild(1) );
+      } else if(isALL) {
+        assert(nodeOutputs[2] != null);
+        ExprNodeDesc lhs = (ExprNodeDesc)nodeOutputs[2];
+        return new ExprNodeSubQueryDesc(TypeInfoFactory.booleanTypeInfo, subqueryRel,
+            ExprNodeSubQueryDesc.SubqueryType.ALL, lhs, (ASTNode)subqueryOp.getChild(1));
       }
 
       /*

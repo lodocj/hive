@@ -44,29 +44,34 @@ import org.apache.hadoop.hive.ql.io.AcidUtils;
 import org.apache.hadoop.hive.shims.HadoopShims.HdfsFileStatusWithId;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.StringUtils;
+import org.apache.hive.common.util.Ref;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 /**
  * A class to initiate compactions.  This will run in a separate thread.
  * It's critical that there exactly 1 of these in a given warehouse.
  */
-public class Initiator extends CompactorThread {
+public class Initiator extends MetaStoreCompactorThread {
   static final private String CLASS_NAME = Initiator.class.getName();
   static final private Logger LOG = LoggerFactory.getLogger(CLASS_NAME);
 
   static final private String COMPACTORTHRESHOLD_PREFIX = "compactorthreshold.";
+  private Map<String, String> tblNameOwnersCache = new HashMap<>();
 
   private long checkInterval;
+  private long prevStart = -1;
 
   @Override
   public void run() {
@@ -90,36 +95,27 @@ public class Initiator extends CompactorThread {
         try {
           handle = txnHandler.getMutexAPI().acquireLock(TxnStore.MUTEX_KEY.Initiator.name());
           startedAt = System.currentTimeMillis();
+
+          long compactionInterval = (prevStart < 0) ? prevStart : (startedAt - prevStart)/1000;
+          prevStart = startedAt;
+
           //todo: add method to only get current i.e. skip history - more efficient
           ShowCompactResponse currentCompactions = txnHandler.showCompact(new ShowCompactRequest());
-          Set<CompactionInfo> potentials = txnHandler.findPotentialCompactions(abortedThreshold);
+          Set<CompactionInfo> potentials = txnHandler.findPotentialCompactions(abortedThreshold, compactionInterval)
+                  .stream().filter(ci -> checkCompactionElig(ci)).collect(Collectors.toSet());
           LOG.debug("Found " + potentials.size() + " potential compactions, " +
               "checking to see if we should compact any of them");
           for (CompactionInfo ci : potentials) {
+            // Disable minor compaction for query based compactor
+            if (!ci.isMajorCompaction() && HiveConf.getBoolVar(conf, HiveConf.ConfVars.COMPACTOR_CRUD_QUERY_BASED)) {
+              LOG.debug("Not compacting: " + ci.getFullPartitionName()
+                  + ", as query based compaction currently does not " + "support minor compactions.");
+              continue;
+            }
             LOG.info("Checking to see if we should compact " + ci.getFullPartitionName());
             try {
+
               Table t = resolveTable(ci);
-              if (t == null) {
-                // Most likely this means it's a temp table
-                LOG.info("Can't find table " + ci.getFullTableName() + ", assuming it's a temp " +
-                    "table or has been dropped and moving on.");
-                continue;
-              }
-
-              // check if no compaction set for this table
-              if (noAutoCompactSet(t)) {
-                LOG.info("Table " + tableName(t) + " marked " + hive_metastoreConstants.TABLE_NO_AUTO_COMPACT + "=true so we will not compact it.");
-                continue;
-              }
-
-              // Check to see if this is a table level request on a partitioned table.  If so,
-              // then it's a dynamic partitioning case and we shouldn't check the table itself.
-              if (t.getPartitionKeys() != null && t.getPartitionKeys().size() > 0 &&
-                  ci.partName  == null) {
-                LOG.debug("Skipping entry for " + ci.getFullTableName() + " as it is from dynamic" +
-                    " partitioning");
-                continue;
-              }
 
               // Check if we already have initiated or are working on a compaction for this partition
               // or table.  If so, skip it.  If we are just waiting on cleaning we can still check,
@@ -157,7 +153,13 @@ public class Initiator extends CompactorThread {
                       txnHandler.getValidWriteIds(rqst).getTblValidWriteIds().get(0));
 
               StorageDescriptor sd = resolveStorageDescriptor(t, p);
-              String runAs = findUserToRunAs(sd.getLocation(), t);
+              String runAs = tblNameOwnersCache.get(fullTableName);
+              if (runAs == null) {
+                LOG.debug("unable to find the table owner in the cache for table "+ fullTableName + " " +
+                            "will determine user based on table location");
+                runAs = findUserToRunAs(sd.getLocation(), t);
+                tblNameOwnersCache.put(fullTableName, runAs);
+              }
               /*Future thought: checkForCompaction will check a lot of file metadata and may be expensive.
               * Long term we should consider having a thread pool here and running checkForCompactionS
               * in parallel*/
@@ -201,8 +203,9 @@ public class Initiator extends CompactorThread {
     }
   }
 
+
   @Override
-  public void init(AtomicBoolean stop, AtomicBoolean looped) throws MetaException {
+  public void init(AtomicBoolean stop, AtomicBoolean looped) throws Exception {
     super.init(stop, looped);
     checkInterval =
         conf.getTimeVar(HiveConf.ConfVars.HIVE_COMPACTOR_CHECK_INTERVAL, TimeUnit.MILLISECONDS) ;
@@ -273,7 +276,7 @@ public class Initiator extends CompactorThread {
     boolean noBase = false;
     Path location = new Path(sd.getLocation());
     FileSystem fs = location.getFileSystem(conf);
-    AcidUtils.Directory dir = AcidUtils.getAcidState(location, conf, writeIds, false, false);
+    AcidUtils.Directory dir = AcidUtils.getAcidState(fs, location, conf, writeIds, Ref.from(false), false, tblproperties, false);
     Path base = dir.getBaseDirectory();
     long baseSize = 0;
     FileStatus stat = null;
@@ -378,5 +381,48 @@ public class Initiator extends CompactorThread {
           t.getParameters().get(hive_metastoreConstants.TABLE_NO_AUTO_COMPACT.toUpperCase());
     }
     return noAutoCompact != null && noAutoCompact.equalsIgnoreCase("true");
+  }
+
+  // Check to see if this is a table level request on a partitioned table.  If so,
+  // then it's a dynamic partitioning case and we shouldn't check the table itself.
+  private static boolean checkDynPartitioning(Table t, CompactionInfo ci){
+    if (t.getPartitionKeys() != null && t.getPartitionKeys().size() > 0 &&
+            ci.partName  == null) {
+      LOG.debug("Skipping entry for " + ci.getFullTableName() + " as it is from dynamic" +
+              " partitioning");
+      return  true;
+    }
+    return false;
+  }
+
+  private boolean checkCompactionElig(CompactionInfo ci){
+    Table t = null;
+    try {
+      t = resolveTable(ci);
+      if (t == null) {
+        LOG.info("Can't find table " + ci.getFullTableName() + ", assuming it's a temp " +
+                "table or has been dropped and moving on.");
+        return false;
+      }
+
+      if (replIsCompactionDisabledForDatabase(ci.dbname)) {
+        return false;
+      }
+
+      if (noAutoCompactSet(t)) {
+        LOG.info("Table " + tableName(t) + " marked " + hive_metastoreConstants.TABLE_NO_AUTO_COMPACT +
+                "=true so we will not compact it.");
+        return false;
+      } else if (replIsCompactionDisabledForTable(t)) {
+        return false;
+      } else if (checkDynPartitioning(t, ci)) {
+        return false;
+      }
+
+    } catch (Throwable e) {
+      LOG.error("Caught Exception while checking compactiton eligibility " +
+              StringUtils.stringifyException(e));
+    }
+    return true;
   }
 }

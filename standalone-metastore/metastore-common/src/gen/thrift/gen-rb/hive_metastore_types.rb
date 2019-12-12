@@ -155,6 +155,23 @@ module ResourceType
   VALID_VALUES = Set.new([JAR, FILE, ARCHIVE]).freeze
 end
 
+module TxnType
+  DEFAULT = 0
+  REPL_CREATED = 1
+  READ_ONLY = 2
+  COMPACTION = 3
+  VALUE_MAP = {0 => "DEFAULT", 1 => "REPL_CREATED", 2 => "READ_ONLY", 3 => "COMPACTION"}
+  VALID_VALUES = Set.new([DEFAULT, REPL_CREATED, READ_ONLY, COMPACTION]).freeze
+end
+
+module GetTablesExtRequestFields
+  ACCESS_TYPE = 1
+  PROCESSOR_CAPABILITIES = 2
+  ALL = 2147483647
+  VALUE_MAP = {1 => "ACCESS_TYPE", 2 => "PROCESSOR_CAPABILITIES", 2147483647 => "ALL"}
+  VALID_VALUES = Set.new([ACCESS_TYPE, PROCESSOR_CAPABILITIES, ALL]).freeze
+end
+
 module FileMetadataExprType
   ORC_SARG = 1
   VALUE_MAP = {1 => "ORC_SARG"}
@@ -181,6 +198,24 @@ module WMPoolSchedulingPolicy
   FIFO = 2
   VALUE_MAP = {1 => "FAIR", 2 => "FIFO"}
   VALID_VALUES = Set.new([FAIR, FIFO]).freeze
+end
+
+module ScheduledQueryMaintenanceRequestType
+  CREATE = 1
+  ALTER = 2
+  DROP = 3
+  VALUE_MAP = {1 => "CREATE", 2 => "ALTER", 3 => "DROP"}
+  VALID_VALUES = Set.new([CREATE, ALTER, DROP]).freeze
+end
+
+module QueryState
+  INITED = 0
+  EXECUTING = 1
+  ERRORED = 2
+  FINISHED = 3
+  TIMED_OUT = 4
+  VALUE_MAP = {0 => "INITED", 1 => "EXECUTING", 2 => "ERRORED", 3 => "FINISHED", 4 => "TIMED_OUT"}
+  VALID_VALUES = Set.new([INITED, EXECUTING, ERRORED, FINISHED, TIMED_OUT]).freeze
 end
 
 module PartitionFilterMode
@@ -838,11 +873,13 @@ class Catalog
   NAME = 1
   DESCRIPTION = 2
   LOCATIONURI = 3
+  CREATETIME = 4
 
   FIELDS = {
     NAME => {:type => ::Thrift::Types::STRING, :name => 'name'},
     DESCRIPTION => {:type => ::Thrift::Types::STRING, :name => 'description', :optional => true},
-    LOCATIONURI => {:type => ::Thrift::Types::STRING, :name => 'locationUri'}
+    LOCATIONURI => {:type => ::Thrift::Types::STRING, :name => 'locationUri'},
+    CREATETIME => {:type => ::Thrift::Types::I32, :name => 'createTime', :optional => true}
   }
 
   def struct_fields; FIELDS; end
@@ -961,6 +998,7 @@ class Database
   OWNERNAME = 6
   OWNERTYPE = 7
   CATALOGNAME = 8
+  CREATETIME = 9
 
   FIELDS = {
     NAME => {:type => ::Thrift::Types::STRING, :name => 'name'},
@@ -970,7 +1008,8 @@ class Database
     PRIVILEGES => {:type => ::Thrift::Types::STRUCT, :name => 'privileges', :class => ::PrincipalPrivilegeSet, :optional => true},
     OWNERNAME => {:type => ::Thrift::Types::STRING, :name => 'ownerName', :optional => true},
     OWNERTYPE => {:type => ::Thrift::Types::I32, :name => 'ownerType', :optional => true, :enum_class => ::PrincipalType},
-    CATALOGNAME => {:type => ::Thrift::Types::STRING, :name => 'catalogName', :optional => true}
+    CATALOGNAME => {:type => ::Thrift::Types::STRING, :name => 'catalogName', :optional => true},
+    CREATETIME => {:type => ::Thrift::Types::I32, :name => 'createTime', :optional => true}
   }
 
   def struct_fields; FIELDS; end
@@ -1091,32 +1130,65 @@ class StorageDescriptor
   ::Thrift::Struct.generate_accessors self
 end
 
-class Table
+class CreationMetadata
   include ::Thrift::Struct, ::Thrift::Struct_Union
-  ID = 1
-  TABLENAME = 2
-  DBNAME = 3
-  OWNER = 4
-  CREATETIME = 5
-  LASTACCESSTIME = 6
-  RETENTION = 7
-  SD = 8
-  PARTITIONKEYS = 9
-  PARAMETERS = 10
-  VIEWORIGINALTEXT = 11
-  VIEWEXPANDEDTEXT = 12
-  TABLETYPE = 13
-  PRIVILEGES = 14
-  TEMPORARY = 15
-  REWRITEENABLED = 16
-  CREATIONMETADATA = 17
-  CATNAME = 18
-  OWNERTYPE = 19
-  WRITEID = 20
-  ISSTATSCOMPLIANT = 21
+  CATNAME = 1
+  DBNAME = 2
+  TBLNAME = 3
+  TABLESUSED = 4
+  VALIDTXNLIST = 5
+  MATERIALIZATIONTIME = 6
 
   FIELDS = {
-    ID => {:type => ::Thrift::Types::I64, :name => 'id', :optional => true},
+    CATNAME => {:type => ::Thrift::Types::STRING, :name => 'catName'},
+    DBNAME => {:type => ::Thrift::Types::STRING, :name => 'dbName'},
+    TBLNAME => {:type => ::Thrift::Types::STRING, :name => 'tblName'},
+    TABLESUSED => {:type => ::Thrift::Types::SET, :name => 'tablesUsed', :element => {:type => ::Thrift::Types::STRING}},
+    VALIDTXNLIST => {:type => ::Thrift::Types::STRING, :name => 'validTxnList', :optional => true},
+    MATERIALIZATIONTIME => {:type => ::Thrift::Types::I64, :name => 'materializationTime', :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field catName is unset!') unless @catName
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field dbName is unset!') unless @dbName
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field tblName is unset!') unless @tblName
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field tablesUsed is unset!') unless @tablesUsed
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class Table
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  TABLENAME = 1
+  DBNAME = 2
+  OWNER = 3
+  CREATETIME = 4
+  LASTACCESSTIME = 5
+  RETENTION = 6
+  SD = 7
+  PARTITIONKEYS = 8
+  PARAMETERS = 9
+  VIEWORIGINALTEXT = 10
+  VIEWEXPANDEDTEXT = 11
+  TABLETYPE = 12
+  PRIVILEGES = 13
+  TEMPORARY = 14
+  REWRITEENABLED = 15
+  CREATIONMETADATA = 16
+  CATNAME = 17
+  OWNERTYPE = 18
+  WRITEID = 19
+  ISSTATSCOMPLIANT = 20
+  COLSTATS = 21
+  ACCESSTYPE = 22
+  REQUIREDREADCAPABILITIES = 23
+  REQUIREDWRITECAPABILITIES = 24
+  ID = 25
+
+  FIELDS = {
     TABLENAME => {:type => ::Thrift::Types::STRING, :name => 'tableName'},
     DBNAME => {:type => ::Thrift::Types::STRING, :name => 'dbName'},
     OWNER => {:type => ::Thrift::Types::STRING, :name => 'owner'},
@@ -1136,7 +1208,12 @@ class Table
     CATNAME => {:type => ::Thrift::Types::STRING, :name => 'catName', :optional => true},
     OWNERTYPE => {:type => ::Thrift::Types::I32, :name => 'ownerType', :default =>     1, :optional => true, :enum_class => ::PrincipalType},
     WRITEID => {:type => ::Thrift::Types::I64, :name => 'writeId', :default => -1, :optional => true},
-    ISSTATSCOMPLIANT => {:type => ::Thrift::Types::BOOL, :name => 'isStatsCompliant', :optional => true}
+    ISSTATSCOMPLIANT => {:type => ::Thrift::Types::BOOL, :name => 'isStatsCompliant', :optional => true},
+    COLSTATS => {:type => ::Thrift::Types::STRUCT, :name => 'colStats', :class => ::ColumnStatistics, :optional => true},
+    ACCESSTYPE => {:type => ::Thrift::Types::BYTE, :name => 'accessType', :optional => true},
+    REQUIREDREADCAPABILITIES => {:type => ::Thrift::Types::LIST, :name => 'requiredReadCapabilities', :element => {:type => ::Thrift::Types::STRING}, :optional => true},
+    REQUIREDWRITECAPABILITIES => {:type => ::Thrift::Types::LIST, :name => 'requiredWriteCapabilities', :element => {:type => ::Thrift::Types::STRING}, :optional => true},
+    ID => {:type => ::Thrift::Types::I64, :name => 'id', :optional => true}
   }
 
   def struct_fields; FIELDS; end
@@ -1163,6 +1240,7 @@ class Partition
   CATNAME = 9
   WRITEID = 10
   ISSTATSCOMPLIANT = 11
+  COLSTATS = 12
 
   FIELDS = {
     VALUES => {:type => ::Thrift::Types::LIST, :name => 'values', :element => {:type => ::Thrift::Types::STRING}},
@@ -1175,7 +1253,8 @@ class Partition
     PRIVILEGES => {:type => ::Thrift::Types::STRUCT, :name => 'privileges', :class => ::PrincipalPrivilegeSet, :optional => true},
     CATNAME => {:type => ::Thrift::Types::STRING, :name => 'catName', :optional => true},
     WRITEID => {:type => ::Thrift::Types::I64, :name => 'writeId', :default => -1, :optional => true},
-    ISSTATSCOMPLIANT => {:type => ::Thrift::Types::BOOL, :name => 'isStatsCompliant', :optional => true}
+    ISSTATSCOMPLIANT => {:type => ::Thrift::Types::BOOL, :name => 'isStatsCompliant', :optional => true},
+    COLSTATS => {:type => ::Thrift::Types::STRUCT, :name => 'colStats', :class => ::ColumnStatistics, :optional => true}
   }
 
   def struct_fields; FIELDS; end
@@ -1220,52 +1299,6 @@ class PartitionSpecWithSharedSD
   FIELDS = {
     PARTITIONS => {:type => ::Thrift::Types::LIST, :name => 'partitions', :element => {:type => ::Thrift::Types::STRUCT, :class => ::PartitionWithoutSD}},
     SD => {:type => ::Thrift::Types::STRUCT, :name => 'sd', :class => ::StorageDescriptor}
-  }
-
-  def struct_fields; FIELDS; end
-
-  def validate
-  end
-
-  ::Thrift::Struct.generate_accessors self
-end
-
-class PartitionListComposingSpec
-  include ::Thrift::Struct, ::Thrift::Struct_Union
-  PARTITIONS = 1
-
-  FIELDS = {
-    PARTITIONS => {:type => ::Thrift::Types::LIST, :name => 'partitions', :element => {:type => ::Thrift::Types::STRUCT, :class => ::Partition}}
-  }
-
-  def struct_fields; FIELDS; end
-
-  def validate
-  end
-
-  ::Thrift::Struct.generate_accessors self
-end
-
-class PartitionSpec
-  include ::Thrift::Struct, ::Thrift::Struct_Union
-  DBNAME = 1
-  TABLENAME = 2
-  ROOTPATH = 3
-  SHAREDSDPARTITIONSPEC = 4
-  PARTITIONLIST = 5
-  CATNAME = 6
-  WRITEID = 7
-  ISSTATSCOMPLIANT = 8
-
-  FIELDS = {
-    DBNAME => {:type => ::Thrift::Types::STRING, :name => 'dbName'},
-    TABLENAME => {:type => ::Thrift::Types::STRING, :name => 'tableName'},
-    ROOTPATH => {:type => ::Thrift::Types::STRING, :name => 'rootPath'},
-    SHAREDSDPARTITIONSPEC => {:type => ::Thrift::Types::STRUCT, :name => 'sharedSDPartitionSpec', :class => ::PartitionSpecWithSharedSD, :optional => true},
-    PARTITIONLIST => {:type => ::Thrift::Types::STRUCT, :name => 'partitionList', :class => ::PartitionListComposingSpec, :optional => true},
-    CATNAME => {:type => ::Thrift::Types::STRING, :name => 'catName', :optional => true},
-    WRITEID => {:type => ::Thrift::Types::I64, :name => 'writeId', :default => -1, :optional => true},
-    ISSTATSCOMPLIANT => {:type => ::Thrift::Types::BOOL, :name => 'isStatsCompliant', :optional => true}
   }
 
   def struct_fields; FIELDS; end
@@ -1495,6 +1528,49 @@ class DateColumnStatsData
   ::Thrift::Struct.generate_accessors self
 end
 
+class Timestamp
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  SECONDSSINCEEPOCH = 1
+
+  FIELDS = {
+    SECONDSSINCEEPOCH => {:type => ::Thrift::Types::I64, :name => 'secondsSinceEpoch'}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field secondsSinceEpoch is unset!') unless @secondsSinceEpoch
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class TimestampColumnStatsData
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  LOWVALUE = 1
+  HIGHVALUE = 2
+  NUMNULLS = 3
+  NUMDVS = 4
+  BITVECTORS = 5
+
+  FIELDS = {
+    LOWVALUE => {:type => ::Thrift::Types::STRUCT, :name => 'lowValue', :class => ::Timestamp, :optional => true},
+    HIGHVALUE => {:type => ::Thrift::Types::STRUCT, :name => 'highValue', :class => ::Timestamp, :optional => true},
+    NUMNULLS => {:type => ::Thrift::Types::I64, :name => 'numNulls'},
+    NUMDVS => {:type => ::Thrift::Types::I64, :name => 'numDVs'},
+    BITVECTORS => {:type => ::Thrift::Types::STRING, :name => 'bitVectors', :binary => true, :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field numNulls is unset!') unless @numNulls
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field numDVs is unset!') unless @numDVs
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
 class ColumnStatisticsData < ::Thrift::Union
   include ::Thrift::Struct_Union
   class << self
@@ -1525,6 +1601,10 @@ class ColumnStatisticsData < ::Thrift::Union
     def dateStats(val)
       ColumnStatisticsData.new(:dateStats, val)
     end
+
+    def timestampStats(val)
+      ColumnStatisticsData.new(:timestampStats, val)
+    end
   end
 
   BOOLEANSTATS = 1
@@ -1534,6 +1614,7 @@ class ColumnStatisticsData < ::Thrift::Union
   BINARYSTATS = 5
   DECIMALSTATS = 6
   DATESTATS = 7
+  TIMESTAMPSTATS = 8
 
   FIELDS = {
     BOOLEANSTATS => {:type => ::Thrift::Types::STRUCT, :name => 'booleanStats', :class => ::BooleanColumnStatsData},
@@ -1542,7 +1623,8 @@ class ColumnStatisticsData < ::Thrift::Union
     STRINGSTATS => {:type => ::Thrift::Types::STRUCT, :name => 'stringStats', :class => ::StringColumnStatsData},
     BINARYSTATS => {:type => ::Thrift::Types::STRUCT, :name => 'binaryStats', :class => ::BinaryColumnStatsData},
     DECIMALSTATS => {:type => ::Thrift::Types::STRUCT, :name => 'decimalStats', :class => ::DecimalColumnStatsData},
-    DATESTATS => {:type => ::Thrift::Types::STRUCT, :name => 'dateStats', :class => ::DateColumnStatsData}
+    DATESTATS => {:type => ::Thrift::Types::STRUCT, :name => 'dateStats', :class => ::DateColumnStatsData},
+    TIMESTAMPSTATS => {:type => ::Thrift::Types::STRUCT, :name => 'timestampStats', :class => ::TimestampColumnStatsData}
   }
 
   def struct_fields; FIELDS; end
@@ -1611,11 +1693,13 @@ class ColumnStatistics
   STATSDESC = 1
   STATSOBJ = 2
   ISSTATSCOMPLIANT = 3
+  ENGINE = 4
 
   FIELDS = {
     STATSDESC => {:type => ::Thrift::Types::STRUCT, :name => 'statsDesc', :class => ::ColumnStatisticsDesc},
     STATSOBJ => {:type => ::Thrift::Types::LIST, :name => 'statsObj', :element => {:type => ::Thrift::Types::STRUCT, :class => ::ColumnStatisticsObj}},
-    ISSTATSCOMPLIANT => {:type => ::Thrift::Types::BOOL, :name => 'isStatsCompliant', :optional => true}
+    ISSTATSCOMPLIANT => {:type => ::Thrift::Types::BOOL, :name => 'isStatsCompliant', :optional => true},
+    ENGINE => {:type => ::Thrift::Types::STRING, :name => 'engine', :optional => true}
   }
 
   def struct_fields; FIELDS; end
@@ -1623,6 +1707,52 @@ class ColumnStatistics
   def validate
     raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field statsDesc is unset!') unless @statsDesc
     raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field statsObj is unset!') unless @statsObj
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class PartitionListComposingSpec
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  PARTITIONS = 1
+
+  FIELDS = {
+    PARTITIONS => {:type => ::Thrift::Types::LIST, :name => 'partitions', :element => {:type => ::Thrift::Types::STRUCT, :class => ::Partition}}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class PartitionSpec
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  DBNAME = 1
+  TABLENAME = 2
+  ROOTPATH = 3
+  SHAREDSDPARTITIONSPEC = 4
+  PARTITIONLIST = 5
+  CATNAME = 6
+  WRITEID = 7
+  ISSTATSCOMPLIANT = 8
+
+  FIELDS = {
+    DBNAME => {:type => ::Thrift::Types::STRING, :name => 'dbName'},
+    TABLENAME => {:type => ::Thrift::Types::STRING, :name => 'tableName'},
+    ROOTPATH => {:type => ::Thrift::Types::STRING, :name => 'rootPath'},
+    SHAREDSDPARTITIONSPEC => {:type => ::Thrift::Types::STRUCT, :name => 'sharedSDPartitionSpec', :class => ::PartitionSpecWithSharedSD, :optional => true},
+    PARTITIONLIST => {:type => ::Thrift::Types::STRUCT, :name => 'partitionList', :class => ::PartitionListComposingSpec, :optional => true},
+    CATNAME => {:type => ::Thrift::Types::STRING, :name => 'catName', :optional => true},
+    WRITEID => {:type => ::Thrift::Types::I64, :name => 'writeId', :default => -1, :optional => true},
+    ISSTATSCOMPLIANT => {:type => ::Thrift::Types::BOOL, :name => 'isStatsCompliant', :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
   end
 
   ::Thrift::Struct.generate_accessors self
@@ -1656,18 +1786,21 @@ class SetPartitionsStatsRequest
   NEEDMERGE = 2
   WRITEID = 3
   VALIDWRITEIDLIST = 4
+  ENGINE = 5
 
   FIELDS = {
     COLSTATS => {:type => ::Thrift::Types::LIST, :name => 'colStats', :element => {:type => ::Thrift::Types::STRUCT, :class => ::ColumnStatistics}},
     NEEDMERGE => {:type => ::Thrift::Types::BOOL, :name => 'needMerge', :optional => true},
     WRITEID => {:type => ::Thrift::Types::I64, :name => 'writeId', :default => -1, :optional => true},
-    VALIDWRITEIDLIST => {:type => ::Thrift::Types::STRING, :name => 'validWriteIdList', :optional => true}
+    VALIDWRITEIDLIST => {:type => ::Thrift::Types::STRING, :name => 'validWriteIdList', :optional => true},
+    ENGINE => {:type => ::Thrift::Types::STRING, :name => 'engine'}
   }
 
   def struct_fields; FIELDS; end
 
   def validate
     raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field colStats is unset!') unless @colStats
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field engine is unset!') unless @engine
   end
 
   ::Thrift::Struct.generate_accessors self
@@ -2185,13 +2318,15 @@ class TableStatsRequest
   COLNAMES = 3
   CATNAME = 4
   VALIDWRITEIDLIST = 5
+  ENGINE = 6
 
   FIELDS = {
     DBNAME => {:type => ::Thrift::Types::STRING, :name => 'dbName'},
     TBLNAME => {:type => ::Thrift::Types::STRING, :name => 'tblName'},
     COLNAMES => {:type => ::Thrift::Types::LIST, :name => 'colNames', :element => {:type => ::Thrift::Types::STRING}},
     CATNAME => {:type => ::Thrift::Types::STRING, :name => 'catName', :optional => true},
-    VALIDWRITEIDLIST => {:type => ::Thrift::Types::STRING, :name => 'validWriteIdList', :optional => true}
+    VALIDWRITEIDLIST => {:type => ::Thrift::Types::STRING, :name => 'validWriteIdList', :optional => true},
+    ENGINE => {:type => ::Thrift::Types::STRING, :name => 'engine'}
   }
 
   def struct_fields; FIELDS; end
@@ -2200,6 +2335,7 @@ class TableStatsRequest
     raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field dbName is unset!') unless @dbName
     raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field tblName is unset!') unless @tblName
     raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field colNames is unset!') unless @colNames
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field engine is unset!') unless @engine
   end
 
   ::Thrift::Struct.generate_accessors self
@@ -2213,6 +2349,7 @@ class PartitionsStatsRequest
   PARTNAMES = 4
   CATNAME = 5
   VALIDWRITEIDLIST = 6
+  ENGINE = 7
 
   FIELDS = {
     DBNAME => {:type => ::Thrift::Types::STRING, :name => 'dbName'},
@@ -2220,7 +2357,8 @@ class PartitionsStatsRequest
     COLNAMES => {:type => ::Thrift::Types::LIST, :name => 'colNames', :element => {:type => ::Thrift::Types::STRING}},
     PARTNAMES => {:type => ::Thrift::Types::LIST, :name => 'partNames', :element => {:type => ::Thrift::Types::STRING}},
     CATNAME => {:type => ::Thrift::Types::STRING, :name => 'catName', :optional => true},
-    VALIDWRITEIDLIST => {:type => ::Thrift::Types::STRING, :name => 'validWriteIdList', :optional => true}
+    VALIDWRITEIDLIST => {:type => ::Thrift::Types::STRING, :name => 'validWriteIdList', :optional => true},
+    ENGINE => {:type => ::Thrift::Types::STRING, :name => 'engine'}
   }
 
   def struct_fields; FIELDS; end
@@ -2230,6 +2368,7 @@ class PartitionsStatsRequest
     raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field tblName is unset!') unless @tblName
     raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field colNames is unset!') unless @colNames
     raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field partNames is unset!') unless @partNames
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field engine is unset!') unless @engine
   end
 
   ::Thrift::Struct.generate_accessors self
@@ -2453,6 +2592,53 @@ class PartitionValuesResponse
   ::Thrift::Struct.generate_accessors self
 end
 
+class GetPartitionsByNamesRequest
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  DB_NAME = 1
+  TBL_NAME = 2
+  NAMES = 3
+  GET_COL_STATS = 4
+  PROCESSORCAPABILITIES = 5
+  PROCESSORIDENTIFIER = 6
+  ENGINE = 7
+
+  FIELDS = {
+    DB_NAME => {:type => ::Thrift::Types::STRING, :name => 'db_name'},
+    TBL_NAME => {:type => ::Thrift::Types::STRING, :name => 'tbl_name'},
+    NAMES => {:type => ::Thrift::Types::LIST, :name => 'names', :element => {:type => ::Thrift::Types::STRING}, :optional => true},
+    GET_COL_STATS => {:type => ::Thrift::Types::BOOL, :name => 'get_col_stats', :optional => true},
+    PROCESSORCAPABILITIES => {:type => ::Thrift::Types::LIST, :name => 'processorCapabilities', :element => {:type => ::Thrift::Types::STRING}, :optional => true},
+    PROCESSORIDENTIFIER => {:type => ::Thrift::Types::STRING, :name => 'processorIdentifier', :optional => true},
+    ENGINE => {:type => ::Thrift::Types::STRING, :name => 'engine', :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field db_name is unset!') unless @db_name
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field tbl_name is unset!') unless @tbl_name
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class GetPartitionsByNamesResult
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  PARTITIONS = 1
+
+  FIELDS = {
+    PARTITIONS => {:type => ::Thrift::Types::LIST, :name => 'partitions', :element => {:type => ::Thrift::Types::STRUCT, :class => ::Partition}}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field partitions is unset!') unless @partitions
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
 class ResourceUri
   include ::Thrift::Struct, ::Thrift::Struct_Union
   RESOURCETYPE = 1
@@ -2604,6 +2790,7 @@ class OpenTxnRequest
   AGENTINFO = 4
   REPLPOLICY = 5
   REPLSRCTXNIDS = 6
+  TXN_TYPE = 7
 
   FIELDS = {
     NUM_TXNS => {:type => ::Thrift::Types::I32, :name => 'num_txns'},
@@ -2611,7 +2798,8 @@ class OpenTxnRequest
     HOSTNAME => {:type => ::Thrift::Types::STRING, :name => 'hostname'},
     AGENTINFO => {:type => ::Thrift::Types::STRING, :name => 'agentInfo', :default => %q"Unknown", :optional => true},
     REPLPOLICY => {:type => ::Thrift::Types::STRING, :name => 'replPolicy', :optional => true},
-    REPLSRCTXNIDS => {:type => ::Thrift::Types::LIST, :name => 'replSrcTxnIds', :element => {:type => ::Thrift::Types::I64}, :optional => true}
+    REPLSRCTXNIDS => {:type => ::Thrift::Types::LIST, :name => 'replSrcTxnIds', :element => {:type => ::Thrift::Types::I64}, :optional => true},
+    TXN_TYPE => {:type => ::Thrift::Types::I32, :name => 'txn_type', :default =>     0, :optional => true, :enum_class => ::TxnType}
   }
 
   def struct_fields; FIELDS; end
@@ -2620,6 +2808,9 @@ class OpenTxnRequest
     raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field num_txns is unset!') unless @num_txns
     raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field user is unset!') unless @user
     raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field hostname is unset!') unless @hostname
+    unless @txn_type.nil? || ::TxnType::VALID_VALUES.include?(@txn_type)
+      raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Invalid value of field txn_type!')
+    end
   end
 
   ::Thrift::Struct.generate_accessors self
@@ -2701,29 +2892,6 @@ class CommitTxnKeyValue
   ::Thrift::Struct.generate_accessors self
 end
 
-class CommitTxnRequest
-  include ::Thrift::Struct, ::Thrift::Struct_Union
-  TXNID = 1
-  REPLPOLICY = 2
-  WRITEEVENTINFOS = 3
-  KEYVALUE = 4
-
-  FIELDS = {
-    TXNID => {:type => ::Thrift::Types::I64, :name => 'txnid'},
-    REPLPOLICY => {:type => ::Thrift::Types::STRING, :name => 'replPolicy', :optional => true},
-    WRITEEVENTINFOS => {:type => ::Thrift::Types::LIST, :name => 'writeEventInfos', :element => {:type => ::Thrift::Types::STRUCT, :class => ::WriteEventInfo}, :optional => true},
-    KEYVALUE => {:type => ::Thrift::Types::STRUCT, :name => 'keyValue', :class => ::CommitTxnKeyValue, :optional => true}
-  }
-
-  def struct_fields; FIELDS; end
-
-  def validate
-    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field txnid is unset!') unless @txnid
-  end
-
-  ::Thrift::Struct.generate_accessors self
-end
-
 class WriteEventInfo
   include ::Thrift::Struct, ::Thrift::Struct_Union
   WRITEID = 1
@@ -2751,6 +2919,57 @@ class WriteEventInfo
     raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field database is unset!') unless @database
     raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field table is unset!') unless @table
     raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field files is unset!') unless @files
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class ReplLastIdInfo
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  DATABASE = 1
+  LASTREPLID = 2
+  TABLE = 3
+  CATALOG = 4
+  PARTITIONLIST = 5
+
+  FIELDS = {
+    DATABASE => {:type => ::Thrift::Types::STRING, :name => 'database'},
+    LASTREPLID => {:type => ::Thrift::Types::I64, :name => 'lastReplId'},
+    TABLE => {:type => ::Thrift::Types::STRING, :name => 'table', :optional => true},
+    CATALOG => {:type => ::Thrift::Types::STRING, :name => 'catalog', :optional => true},
+    PARTITIONLIST => {:type => ::Thrift::Types::LIST, :name => 'partitionList', :element => {:type => ::Thrift::Types::STRING}, :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field database is unset!') unless @database
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field lastReplId is unset!') unless @lastReplId
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class CommitTxnRequest
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  TXNID = 1
+  REPLPOLICY = 2
+  WRITEEVENTINFOS = 3
+  KEYVALUE = 4
+  REPLLASTIDINFO = 5
+
+  FIELDS = {
+    TXNID => {:type => ::Thrift::Types::I64, :name => 'txnid'},
+    REPLPOLICY => {:type => ::Thrift::Types::STRING, :name => 'replPolicy', :optional => true},
+    WRITEEVENTINFOS => {:type => ::Thrift::Types::LIST, :name => 'writeEventInfos', :element => {:type => ::Thrift::Types::STRUCT, :class => ::WriteEventInfo}, :optional => true},
+    KEYVALUE => {:type => ::Thrift::Types::STRUCT, :name => 'keyValue', :class => ::CommitTxnKeyValue, :optional => true},
+    REPLLASTIDINFO => {:type => ::Thrift::Types::STRUCT, :name => 'replLastIdInfo', :class => ::ReplLastIdInfo, :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field txnid is unset!') unless @txnid
   end
 
   ::Thrift::Struct.generate_accessors self
@@ -2853,6 +3072,26 @@ class GetValidWriteIdsResponse
   ::Thrift::Struct.generate_accessors self
 end
 
+class TxnToWriteId
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  TXNID = 1
+  WRITEID = 2
+
+  FIELDS = {
+    TXNID => {:type => ::Thrift::Types::I64, :name => 'txnId'},
+    WRITEID => {:type => ::Thrift::Types::I64, :name => 'writeId'}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field txnId is unset!') unless @txnId
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field writeId is unset!') unless @writeId
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
 class AllocateTableWriteIdsRequest
   include ::Thrift::Struct, ::Thrift::Struct_Union
   DBNAME = 1
@@ -2874,26 +3113,6 @@ class AllocateTableWriteIdsRequest
   def validate
     raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field dbName is unset!') unless @dbName
     raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field tableName is unset!') unless @tableName
-  end
-
-  ::Thrift::Struct.generate_accessors self
-end
-
-class TxnToWriteId
-  include ::Thrift::Struct, ::Thrift::Struct_Union
-  TXNID = 1
-  WRITEID = 2
-
-  FIELDS = {
-    TXNID => {:type => ::Thrift::Types::I64, :name => 'txnId'},
-    WRITEID => {:type => ::Thrift::Types::I64, :name => 'writeId'}
-  }
-
-  def struct_fields; FIELDS; end
-
-  def validate
-    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field txnId is unset!') unless @txnId
-    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field writeId is unset!') unless @writeId
   end
 
   ::Thrift::Struct.generate_accessors self
@@ -3233,6 +3452,67 @@ class CompactionRequest
   ::Thrift::Struct.generate_accessors self
 end
 
+class CompactionInfoStruct
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  ID = 1
+  DBNAME = 2
+  TABLENAME = 3
+  PARTITIONNAME = 4
+  TYPE = 5
+  RUNAS = 6
+  PROPERTIES = 7
+  TOOMANYABORTS = 8
+  STATE = 9
+  WORKERID = 10
+  START = 11
+  HIGHESTWRITEID = 12
+
+  FIELDS = {
+    ID => {:type => ::Thrift::Types::I64, :name => 'id'},
+    DBNAME => {:type => ::Thrift::Types::STRING, :name => 'dbname'},
+    TABLENAME => {:type => ::Thrift::Types::STRING, :name => 'tablename'},
+    PARTITIONNAME => {:type => ::Thrift::Types::STRING, :name => 'partitionname', :optional => true},
+    TYPE => {:type => ::Thrift::Types::I32, :name => 'type', :enum_class => ::CompactionType},
+    RUNAS => {:type => ::Thrift::Types::STRING, :name => 'runas', :optional => true},
+    PROPERTIES => {:type => ::Thrift::Types::STRING, :name => 'properties', :optional => true},
+    TOOMANYABORTS => {:type => ::Thrift::Types::BOOL, :name => 'toomanyaborts', :optional => true},
+    STATE => {:type => ::Thrift::Types::STRING, :name => 'state', :optional => true},
+    WORKERID => {:type => ::Thrift::Types::STRING, :name => 'workerId', :optional => true},
+    START => {:type => ::Thrift::Types::I64, :name => 'start', :optional => true},
+    HIGHESTWRITEID => {:type => ::Thrift::Types::I64, :name => 'highestWriteId', :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field id is unset!') unless @id
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field dbname is unset!') unless @dbname
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field tablename is unset!') unless @tablename
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field type is unset!') unless @type
+    unless @type.nil? || ::CompactionType::VALID_VALUES.include?(@type)
+      raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Invalid value of field type!')
+    end
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class OptionalCompactionInfoStruct
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  CI = 1
+
+  FIELDS = {
+    CI => {:type => ::Thrift::Types::STRUCT, :name => 'ci', :class => ::CompactionInfoStruct, :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
 class CompactionResponse
   include ::Thrift::Struct, ::Thrift::Struct_Union
   ID = 1
@@ -3396,44 +3676,16 @@ class BasicTxnInfo
   ::Thrift::Struct.generate_accessors self
 end
 
-class CreationMetadata
-  include ::Thrift::Struct, ::Thrift::Struct_Union
-  CATNAME = 1
-  DBNAME = 2
-  TBLNAME = 3
-  TABLESUSED = 4
-  VALIDTXNLIST = 5
-  MATERIALIZATIONTIME = 6
-
-  FIELDS = {
-    CATNAME => {:type => ::Thrift::Types::STRING, :name => 'catName'},
-    DBNAME => {:type => ::Thrift::Types::STRING, :name => 'dbName'},
-    TBLNAME => {:type => ::Thrift::Types::STRING, :name => 'tblName'},
-    TABLESUSED => {:type => ::Thrift::Types::SET, :name => 'tablesUsed', :element => {:type => ::Thrift::Types::STRING}},
-    VALIDTXNLIST => {:type => ::Thrift::Types::STRING, :name => 'validTxnList', :optional => true},
-    MATERIALIZATIONTIME => {:type => ::Thrift::Types::I64, :name => 'materializationTime', :optional => true}
-  }
-
-  def struct_fields; FIELDS; end
-
-  def validate
-    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field catName is unset!') unless @catName
-    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field dbName is unset!') unless @dbName
-    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field tblName is unset!') unless @tblName
-    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field tablesUsed is unset!') unless @tablesUsed
-  end
-
-  ::Thrift::Struct.generate_accessors self
-end
-
 class NotificationEventRequest
   include ::Thrift::Struct, ::Thrift::Struct_Union
   LASTEVENT = 1
   MAXEVENTS = 2
+  EVENTTYPESKIPLIST = 3
 
   FIELDS = {
     LASTEVENT => {:type => ::Thrift::Types::I64, :name => 'lastEvent'},
-    MAXEVENTS => {:type => ::Thrift::Types::I32, :name => 'maxEvents', :optional => true}
+    MAXEVENTS => {:type => ::Thrift::Types::I32, :name => 'maxEvents', :optional => true},
+    EVENTTYPESKIPLIST => {:type => ::Thrift::Types::LIST, :name => 'eventTypeSkipList', :element => {:type => ::Thrift::Types::STRING}, :optional => true}
   }
 
   def struct_fields; FIELDS; end
@@ -3946,13 +4198,21 @@ class GetTableRequest
   CAPABILITIES = 3
   CATNAME = 4
   VALIDWRITEIDLIST = 6
+  GETCOLUMNSTATS = 7
+  PROCESSORCAPABILITIES = 8
+  PROCESSORIDENTIFIER = 9
+  ENGINE = 10
 
   FIELDS = {
     DBNAME => {:type => ::Thrift::Types::STRING, :name => 'dbName'},
     TBLNAME => {:type => ::Thrift::Types::STRING, :name => 'tblName'},
     CAPABILITIES => {:type => ::Thrift::Types::STRUCT, :name => 'capabilities', :class => ::ClientCapabilities, :optional => true},
     CATNAME => {:type => ::Thrift::Types::STRING, :name => 'catName', :optional => true},
-    VALIDWRITEIDLIST => {:type => ::Thrift::Types::STRING, :name => 'validWriteIdList', :optional => true}
+    VALIDWRITEIDLIST => {:type => ::Thrift::Types::STRING, :name => 'validWriteIdList', :optional => true},
+    GETCOLUMNSTATS => {:type => ::Thrift::Types::BOOL, :name => 'getColumnStats', :optional => true},
+    PROCESSORCAPABILITIES => {:type => ::Thrift::Types::LIST, :name => 'processorCapabilities', :element => {:type => ::Thrift::Types::STRING}, :optional => true},
+    PROCESSORIDENTIFIER => {:type => ::Thrift::Types::STRING, :name => 'processorIdentifier', :optional => true},
+    ENGINE => {:type => ::Thrift::Types::STRING, :name => 'engine', :optional => true}
   }
 
   def struct_fields; FIELDS; end
@@ -3990,12 +4250,16 @@ class GetTablesRequest
   TBLNAMES = 2
   CAPABILITIES = 3
   CATNAME = 4
+  PROCESSORCAPABILITIES = 5
+  PROCESSORIDENTIFIER = 6
 
   FIELDS = {
     DBNAME => {:type => ::Thrift::Types::STRING, :name => 'dbName'},
     TBLNAMES => {:type => ::Thrift::Types::LIST, :name => 'tblNames', :element => {:type => ::Thrift::Types::STRING}, :optional => true},
     CAPABILITIES => {:type => ::Thrift::Types::STRUCT, :name => 'capabilities', :class => ::ClientCapabilities, :optional => true},
-    CATNAME => {:type => ::Thrift::Types::STRING, :name => 'catName', :optional => true}
+    CATNAME => {:type => ::Thrift::Types::STRING, :name => 'catName', :optional => true},
+    PROCESSORCAPABILITIES => {:type => ::Thrift::Types::LIST, :name => 'processorCapabilities', :element => {:type => ::Thrift::Types::STRING}, :optional => true},
+    PROCESSORIDENTIFIER => {:type => ::Thrift::Types::STRING, :name => 'processorIdentifier', :optional => true}
   }
 
   def struct_fields; FIELDS; end
@@ -4019,6 +4283,83 @@ class GetTablesResult
 
   def validate
     raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field tables is unset!') unless @tables
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class GetTablesExtRequest
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  CATALOG = 1
+  DATABASE = 2
+  TABLENAMEPATTERN = 3
+  REQUESTEDFIELDS = 4
+  LIMIT = 5
+  PROCESSORCAPABILITIES = 6
+  PROCESSORIDENTIFIER = 7
+
+  FIELDS = {
+    CATALOG => {:type => ::Thrift::Types::STRING, :name => 'catalog'},
+    DATABASE => {:type => ::Thrift::Types::STRING, :name => 'database'},
+    TABLENAMEPATTERN => {:type => ::Thrift::Types::STRING, :name => 'tableNamePattern'},
+    REQUESTEDFIELDS => {:type => ::Thrift::Types::I32, :name => 'requestedFields'},
+    LIMIT => {:type => ::Thrift::Types::I32, :name => 'limit', :optional => true},
+    PROCESSORCAPABILITIES => {:type => ::Thrift::Types::LIST, :name => 'processorCapabilities', :element => {:type => ::Thrift::Types::STRING}, :optional => true},
+    PROCESSORIDENTIFIER => {:type => ::Thrift::Types::STRING, :name => 'processorIdentifier', :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field catalog is unset!') unless @catalog
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field database is unset!') unless @database
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field tableNamePattern is unset!') unless @tableNamePattern
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field requestedFields is unset!') unless @requestedFields
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class ExtendedTableInfo
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  TBLNAME = 1
+  ACCESSTYPE = 2
+  REQUIREDREADCAPABILITIES = 3
+  REQUIREDWRITECAPABILITIES = 4
+
+  FIELDS = {
+    TBLNAME => {:type => ::Thrift::Types::STRING, :name => 'tblName'},
+    ACCESSTYPE => {:type => ::Thrift::Types::I32, :name => 'accessType', :optional => true},
+    REQUIREDREADCAPABILITIES => {:type => ::Thrift::Types::LIST, :name => 'requiredReadCapabilities', :element => {:type => ::Thrift::Types::STRING}, :optional => true},
+    REQUIREDWRITECAPABILITIES => {:type => ::Thrift::Types::LIST, :name => 'requiredWriteCapabilities', :element => {:type => ::Thrift::Types::STRING}, :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field tblName is unset!') unless @tblName
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class GetDatabaseRequest
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  NAME = 1
+  CATALOGNAME = 2
+  PROCESSORCAPABILITIES = 3
+  PROCESSORIDENTIFIER = 4
+
+  FIELDS = {
+    NAME => {:type => ::Thrift::Types::STRING, :name => 'name', :optional => true},
+    CATALOGNAME => {:type => ::Thrift::Types::STRING, :name => 'catalogName', :optional => true},
+    PROCESSORCAPABILITIES => {:type => ::Thrift::Types::LIST, :name => 'processorCapabilities', :element => {:type => ::Thrift::Types::STRING}, :optional => true},
+    PROCESSORIDENTIFIER => {:type => ::Thrift::Types::STRING, :name => 'processorIdentifier', :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
   end
 
   ::Thrift::Struct.generate_accessors self
@@ -5167,6 +5508,178 @@ class GetRuntimeStatsRequest
   ::Thrift::Struct.generate_accessors self
 end
 
+class CreateTableRequest
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  TABLE = 1
+  ENVCONTEXT = 2
+  PRIMARYKEYS = 3
+  FOREIGNKEYS = 4
+  UNIQUECONSTRAINTS = 5
+  NOTNULLCONSTRAINTS = 6
+  DEFAULTCONSTRAINTS = 7
+  CHECKCONSTRAINTS = 8
+  PROCESSORCAPABILITIES = 9
+  PROCESSORIDENTIFIER = 10
+
+  FIELDS = {
+    TABLE => {:type => ::Thrift::Types::STRUCT, :name => 'table', :class => ::Table},
+    ENVCONTEXT => {:type => ::Thrift::Types::STRUCT, :name => 'envContext', :class => ::EnvironmentContext, :optional => true},
+    PRIMARYKEYS => {:type => ::Thrift::Types::LIST, :name => 'primaryKeys', :element => {:type => ::Thrift::Types::STRUCT, :class => ::SQLPrimaryKey}, :optional => true},
+    FOREIGNKEYS => {:type => ::Thrift::Types::LIST, :name => 'foreignKeys', :element => {:type => ::Thrift::Types::STRUCT, :class => ::SQLForeignKey}, :optional => true},
+    UNIQUECONSTRAINTS => {:type => ::Thrift::Types::LIST, :name => 'uniqueConstraints', :element => {:type => ::Thrift::Types::STRUCT, :class => ::SQLUniqueConstraint}, :optional => true},
+    NOTNULLCONSTRAINTS => {:type => ::Thrift::Types::LIST, :name => 'notNullConstraints', :element => {:type => ::Thrift::Types::STRUCT, :class => ::SQLNotNullConstraint}, :optional => true},
+    DEFAULTCONSTRAINTS => {:type => ::Thrift::Types::LIST, :name => 'defaultConstraints', :element => {:type => ::Thrift::Types::STRUCT, :class => ::SQLDefaultConstraint}, :optional => true},
+    CHECKCONSTRAINTS => {:type => ::Thrift::Types::LIST, :name => 'checkConstraints', :element => {:type => ::Thrift::Types::STRUCT, :class => ::SQLCheckConstraint}, :optional => true},
+    PROCESSORCAPABILITIES => {:type => ::Thrift::Types::LIST, :name => 'processorCapabilities', :element => {:type => ::Thrift::Types::STRING}, :optional => true},
+    PROCESSORIDENTIFIER => {:type => ::Thrift::Types::STRING, :name => 'processorIdentifier', :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field table is unset!') unless @table
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class ScheduledQueryPollRequest
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  CLUSTERNAMESPACE = 1
+
+  FIELDS = {
+    CLUSTERNAMESPACE => {:type => ::Thrift::Types::STRING, :name => 'clusterNamespace'}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field clusterNamespace is unset!') unless @clusterNamespace
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class ScheduledQueryPollResponse
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  SCHEDULEKEY = 1
+  EXECUTIONID = 2
+  QUERY = 3
+  USER = 4
+
+  FIELDS = {
+    SCHEDULEKEY => {:type => ::Thrift::Types::STRUCT, :name => 'scheduleKey', :class => ::ScheduledQueryKey, :optional => true},
+    EXECUTIONID => {:type => ::Thrift::Types::I64, :name => 'executionId', :optional => true},
+    QUERY => {:type => ::Thrift::Types::STRING, :name => 'query', :optional => true},
+    USER => {:type => ::Thrift::Types::STRING, :name => 'user', :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class ScheduledQueryKey
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  SCHEDULENAME = 1
+  CLUSTERNAMESPACE = 2
+
+  FIELDS = {
+    SCHEDULENAME => {:type => ::Thrift::Types::STRING, :name => 'scheduleName'},
+    CLUSTERNAMESPACE => {:type => ::Thrift::Types::STRING, :name => 'clusterNamespace'}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field scheduleName is unset!') unless @scheduleName
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field clusterNamespace is unset!') unless @clusterNamespace
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class ScheduledQuery
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  SCHEDULEKEY = 1
+  ENABLED = 2
+  SCHEDULE = 4
+  USER = 5
+  QUERY = 6
+  NEXTEXECUTION = 7
+
+  FIELDS = {
+    SCHEDULEKEY => {:type => ::Thrift::Types::STRUCT, :name => 'scheduleKey', :class => ::ScheduledQueryKey},
+    ENABLED => {:type => ::Thrift::Types::BOOL, :name => 'enabled', :optional => true},
+    SCHEDULE => {:type => ::Thrift::Types::STRING, :name => 'schedule', :optional => true},
+    USER => {:type => ::Thrift::Types::STRING, :name => 'user', :optional => true},
+    QUERY => {:type => ::Thrift::Types::STRING, :name => 'query', :optional => true},
+    NEXTEXECUTION => {:type => ::Thrift::Types::I32, :name => 'nextExecution', :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field scheduleKey is unset!') unless @scheduleKey
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class ScheduledQueryMaintenanceRequest
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  TYPE = 1
+  SCHEDULEDQUERY = 2
+
+  FIELDS = {
+    TYPE => {:type => ::Thrift::Types::I32, :name => 'type', :enum_class => ::ScheduledQueryMaintenanceRequestType},
+    SCHEDULEDQUERY => {:type => ::Thrift::Types::STRUCT, :name => 'scheduledQuery', :class => ::ScheduledQuery}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field type is unset!') unless @type
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field scheduledQuery is unset!') unless @scheduledQuery
+    unless @type.nil? || ::ScheduledQueryMaintenanceRequestType::VALID_VALUES.include?(@type)
+      raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Invalid value of field type!')
+    end
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
+class ScheduledQueryProgressInfo
+  include ::Thrift::Struct, ::Thrift::Struct_Union
+  SCHEDULEDEXECUTIONID = 1
+  STATE = 2
+  EXECUTORQUERYID = 3
+  ERRORMESSAGE = 4
+
+  FIELDS = {
+    SCHEDULEDEXECUTIONID => {:type => ::Thrift::Types::I64, :name => 'scheduledExecutionId'},
+    STATE => {:type => ::Thrift::Types::I32, :name => 'state', :enum_class => ::QueryState},
+    EXECUTORQUERYID => {:type => ::Thrift::Types::STRING, :name => 'executorQueryId'},
+    ERRORMESSAGE => {:type => ::Thrift::Types::STRING, :name => 'errorMessage', :optional => true}
+  }
+
+  def struct_fields; FIELDS; end
+
+  def validate
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field scheduledExecutionId is unset!') unless @scheduledExecutionId
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field state is unset!') unless @state
+    raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Required field executorQueryId is unset!') unless @executorQueryId
+    unless @state.nil? || ::QueryState::VALID_VALUES.include?(@state)
+      raise ::Thrift::ProtocolException.new(::Thrift::ProtocolException::UNKNOWN, 'Invalid value of field state!')
+    end
+  end
+
+  ::Thrift::Struct.generate_accessors self
+end
+
 class AlterPartitionsRequest
   include ::Thrift::Struct, ::Thrift::Struct_Union
   CATNAME = 1
@@ -5267,6 +5780,8 @@ class AlterTableRequest
   ENVIRONMENTCONTEXT = 5
   WRITEID = 6
   VALIDWRITEIDLIST = 7
+  PROCESSORCAPABILITIES = 8
+  PROCESSORIDENTIFIER = 9
 
   FIELDS = {
     CATNAME => {:type => ::Thrift::Types::STRING, :name => 'catName', :optional => true},
@@ -5275,7 +5790,9 @@ class AlterTableRequest
     TABLE => {:type => ::Thrift::Types::STRUCT, :name => 'table', :class => ::Table},
     ENVIRONMENTCONTEXT => {:type => ::Thrift::Types::STRUCT, :name => 'environmentContext', :class => ::EnvironmentContext, :optional => true},
     WRITEID => {:type => ::Thrift::Types::I64, :name => 'writeId', :default => -1, :optional => true},
-    VALIDWRITEIDLIST => {:type => ::Thrift::Types::STRING, :name => 'validWriteIdList', :optional => true}
+    VALIDWRITEIDLIST => {:type => ::Thrift::Types::STRING, :name => 'validWriteIdList', :optional => true},
+    PROCESSORCAPABILITIES => {:type => ::Thrift::Types::LIST, :name => 'processorCapabilities', :element => {:type => ::Thrift::Types::STRING}, :optional => true},
+    PROCESSORIDENTIFIER => {:type => ::Thrift::Types::STRING, :name => 'processorIdentifier', :optional => true}
   }
 
   def struct_fields; FIELDS; end
@@ -5371,6 +5888,8 @@ class GetPartitionsRequest
   GROUPNAMES = 6
   PROJECTIONSPEC = 7
   FILTERSPEC = 8
+  PROCESSORCAPABILITIES = 9
+  PROCESSORIDENTIFIER = 10
 
   FIELDS = {
     CATNAME => {:type => ::Thrift::Types::STRING, :name => 'catName', :optional => true},
@@ -5380,7 +5899,9 @@ class GetPartitionsRequest
     USER => {:type => ::Thrift::Types::STRING, :name => 'user', :optional => true},
     GROUPNAMES => {:type => ::Thrift::Types::LIST, :name => 'groupNames', :element => {:type => ::Thrift::Types::STRING}, :optional => true},
     PROJECTIONSPEC => {:type => ::Thrift::Types::STRUCT, :name => 'projectionSpec', :class => ::GetPartitionsProjectionSpec},
-    FILTERSPEC => {:type => ::Thrift::Types::STRUCT, :name => 'filterSpec', :class => ::GetPartitionsFilterSpec}
+    FILTERSPEC => {:type => ::Thrift::Types::STRUCT, :name => 'filterSpec', :class => ::GetPartitionsFilterSpec},
+    PROCESSORCAPABILITIES => {:type => ::Thrift::Types::LIST, :name => 'processorCapabilities', :element => {:type => ::Thrift::Types::STRING}, :optional => true},
+    PROCESSORIDENTIFIER => {:type => ::Thrift::Types::STRING, :name => 'processorIdentifier', :optional => true}
   }
 
   def struct_fields; FIELDS; end

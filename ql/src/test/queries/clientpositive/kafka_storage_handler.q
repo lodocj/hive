@@ -8,7 +8,7 @@ STORED BY 'org.apache.hadoop.hive.kafka.KafkaStorageHandler'
 WITH SERDEPROPERTIES ("timestamp.formats"="yyyy-MM-dd\'T\'HH:mm:ss\'Z\'")
 TBLPROPERTIES
 ("kafka.topic" = "test-topic",
-"kafka.bootstrap.servers"="localhost:9092",
+"kafka.bootstrap.servers"="localhost:9093",
 "kafka.serde.class"="org.apache.hadoop.hive.serde2.JsonSerDe")
 ;
 
@@ -140,9 +140,10 @@ CREATE EXTERNAL TABLE kafka_table_2
 `country` string,`continent` string, `namespace` string, `newPage` boolean, `unpatrolled` boolean,
 `anonymous` boolean, `robot` boolean, added int, deleted int, delta bigint)
 STORED BY 'org.apache.hadoop.hive.kafka.KafkaStorageHandler'
+WITH SERDEPROPERTIES ("timestamp.formats"="yyyy-MM-dd\'T\'HH:mm:ss\'Z\'")
 TBLPROPERTIES
 ("kafka.topic" = "test-topic",
-"kafka.bootstrap.servers"="localhost:9092");
+"kafka.bootstrap.servers"="localhost:9093");
 
 Select `__partition`, `__offset`, `__time`, `page`, `user`, `language`, `country`,`continent`, `namespace`, `newPage` ,
 `unpatrolled` , `anonymous` , `robot` , added , deleted , delta
@@ -154,7 +155,7 @@ CREATE EXTERNAL TABLE wiki_kafka_avro_table
 STORED BY 'org.apache.hadoop.hive.kafka.KafkaStorageHandler'
 TBLPROPERTIES
 ("kafka.topic" = "wiki_kafka_avro_table",
-"kafka.bootstrap.servers"="localhost:9092",
+"kafka.bootstrap.servers"="localhost:9093",
 "kafka.serde.class"="org.apache.hadoop.hive.serde2.avro.AvroSerDe",
 'avro.schema.literal'='{
   "type" : "record",
@@ -242,7 +243,7 @@ STORED BY 'org.apache.hadoop.hive.kafka.KafkaStorageHandler'
 WITH SERDEPROPERTIES ("timestamp.formats"="yyyy-MM-dd\'T\'HH:mm:ss\'Z\'")
 TBLPROPERTIES
 ("kafka.topic" = "test-topic-write-json",
-"kafka.bootstrap.servers"="localhost:9092",
+"kafka.bootstrap.servers"="localhost:9093",
 "kafka.serde.class"="org.apache.hadoop.hive.serde2.JsonSerDe")
 ;
 
@@ -275,7 +276,7 @@ CREATE EXTERNAL TABLE kafka_table_csv
 STORED BY 'org.apache.hadoop.hive.kafka.KafkaStorageHandler'
 TBLPROPERTIES
 ("kafka.topic" = "test-topic-write-csv",
-"kafka.bootstrap.servers"="localhost:9092",
+"kafka.bootstrap.servers"="localhost:9093",
 "kafka.serde.class"="org.apache.hadoop.hive.serde2.OpenCSVSerde");
 
 ALTER TABLE kafka_table_csv SET TBLPROPERTIES ("hive.kafka.optimistic.commit"="false", "kafka.write.semantic"="EXACTLY_ONCE");

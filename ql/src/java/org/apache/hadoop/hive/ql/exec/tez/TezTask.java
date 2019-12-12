@@ -40,7 +40,6 @@ import org.apache.hadoop.hive.common.metrics.common.Metrics;
 import org.apache.hadoop.hive.common.metrics.common.MetricsConstant;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.ql.Context;
-import org.apache.hadoop.hive.ql.DriverContext;
 import org.apache.hadoop.hive.ql.exec.FileSinkOperator;
 import org.apache.hadoop.hive.ql.exec.Operator;
 import org.apache.hadoop.hive.ql.exec.Task;
@@ -129,7 +128,7 @@ public class TezTask extends Task<TezWork> {
 
 
   @Override
-  public int execute(DriverContext driverContext) {
+  public int execute() {
     int rc = 1;
     boolean cleanContext = false;
     Context ctx = null;
@@ -137,7 +136,7 @@ public class TezTask extends Task<TezWork> {
 
     try {
       // Get or create Context object. If we create it we have to clean it later as well.
-      ctx = driverContext.getCtx();
+      ctx = context;
       if (ctx == null) {
         ctx = new Context(conf);
         cleanContext = true;
@@ -174,8 +173,10 @@ public class TezTask extends Task<TezWork> {
           ss.getHiveVariables().get("wmpool"), ss.getHiveVariables().get("wmapp"));
 
       WmContext wmContext = ctx.getWmContext();
-      // jobConf will hold all the configuration for hadoop, tez, and hive
-      JobConf jobConf = utils.createConfiguration(conf);
+      // jobConf will hold all the configuration for hadoop, tez, and hive, which are not set in AM defaults
+      JobConf jobConf = utils.createConfiguration(conf, false);
+
+
       // Get all user jars from work (e.g. input format stuff).
       String[] allNonConfFiles = work.configureJobConfAndExtractJars(jobConf);
       // DAG scratch dir. We get a session from the pool so it may be different from Tez one.
@@ -217,7 +218,7 @@ public class TezTask extends Task<TezWork> {
         if (this.isShutdown) {
           throw new HiveException("Operation cancelled");
         }
-        DAGClient dagClient = submit(jobConf, dag, sessionRef);
+        DAGClient dagClient = submit(dag, sessionRef);
         session = sessionRef.value;
         boolean wasShutdown = false;
         synchronized (dagClientLock) {
@@ -532,7 +533,7 @@ public class TezTask extends Task<TezWork> {
     return newSession;
   }
 
-  DAGClient submit(JobConf conf, DAG dag, Ref<TezSessionState> sessionStateRef) throws Exception {
+  DAGClient submit(DAG dag, Ref<TezSessionState> sessionStateRef) throws Exception {
     perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.TEZ_SUBMIT_DAG);
     DAGClient dagClient = null;
     TezSessionState sessionState = sessionStateRef.value;
@@ -628,6 +629,11 @@ public class TezTask extends Task<TezWork> {
   @Override
   public String getName() {
     return "TEZ";
+  }
+
+  @Override
+  public boolean canExecuteInParallel() {
+    return false;
   }
 
   @Override

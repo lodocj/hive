@@ -20,6 +20,8 @@ package org.apache.hadoop.hive.ql.exec;
 
 import static org.apache.hadoop.hive.serde.serdeConstants.STRING_TYPE_NAME;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.io.Serializable;
@@ -46,12 +48,14 @@ import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.LockComponent;
-import org.apache.hadoop.hive.ql.Driver;
-import org.apache.hadoop.hive.ql.DriverContext;
+import org.apache.hadoop.hive.ql.Context;
+import org.apache.hadoop.hive.ql.QueryPlan;
+import org.apache.hadoop.hive.ql.QueryState;
 import org.apache.hadoop.hive.ql.hooks.ReadEntity;
 import org.apache.hadoop.hive.ql.io.AcidUtils;
 import org.apache.hadoop.hive.ql.metadata.Table;
 import org.apache.hadoop.hive.ql.optimizer.physical.StageIDsRearranger;
+import org.apache.hadoop.hive.ql.parse.ASTNode;
 import org.apache.hadoop.hive.ql.parse.BaseSemanticAnalyzer;
 import org.apache.hadoop.hive.ql.parse.ExplainConfiguration.VectorizationDetailLevel;
 import org.apache.hadoop.hive.ql.plan.Explain;
@@ -66,6 +70,7 @@ import org.apache.hadoop.hive.ql.plan.SparkWork;
 import org.apache.hadoop.hive.ql.plan.TezWork;
 import org.apache.hadoop.hive.ql.plan.api.StageType;
 import org.apache.hadoop.hive.ql.security.authorization.AuthorizationFactory;
+import org.apache.hadoop.hive.ql.security.authorization.command.CommandAuthorizer;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hive.common.util.AnnotationUtils;
@@ -82,17 +87,13 @@ import com.google.common.annotations.VisibleForTesting;
  *
  **/
 public class ExplainTask extends Task<ExplainWork> implements Serializable {
+  private static final Logger LOG = LoggerFactory.getLogger(ExplainTask.class.getName());
+
   public static final String STAGE_DEPENDENCIES = "STAGE DEPENDENCIES";
   private static final long serialVersionUID = 1L;
   public static final String EXPL_COLUMN_NAME = "Explain";
   private final Set<Operator<?>> visitedOps = new HashSet<Operator<?>>();
   private boolean isLogical = false;
-  protected final Logger LOG;
-
-  public ExplainTask() {
-    super();
-    LOG = LoggerFactory.getLogger(this.getClass().getName());
-  }
 
   /*
    * Below method returns the dependencies for the passed in query to EXPLAIN.
@@ -140,14 +141,19 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
     return outJSONObject;
   }
 
-  public String outputCboPlan(String cboPlan, PrintStream out, boolean jsonOutput)
-      throws JSONException {
-    if (out != null) {
-      out.println("CBO PLAN:");
-      out.println(cboPlan);
+  public JSONObject getJSONCBOPlan(PrintStream out, ExplainWork work) throws Exception {
+    JSONObject outJSONObject = new JSONObject(new LinkedHashMap<>());
+    boolean jsonOutput = work.isFormatted();
+    String cboPlan = work.getCboPlan();
+    if (cboPlan != null) {
+      if (jsonOutput) {
+        outJSONObject.put("CBOPlan", cboPlan);
+      } else {
+        out.println("CBO PLAN:");
+        out.println(cboPlan);
+      }
     }
-
-    return jsonOutput ? cboPlan : null;
+    return outJSONObject;
   }
 
   public JSONObject getJSONLogicalPlan(PrintStream out, ExplainWork work) throws Exception {
@@ -232,11 +238,12 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
       throws Exception {
     return getJSONPlan(out, work.getRootTasks(), work.getFetchTask(),
         work.isFormatted(), work.getExtended(), work.isAppendTaskType(), work.getCboInfo(),
-        work.getOptimizedSQL());
+        work.getCboPlan(), work.getOptimizedSQL());
   }
 
   public JSONObject getJSONPlan(PrintStream out, List<Task<?>> tasks, Task<?> fetchTask,
-      boolean jsonOutput, boolean isExtended, boolean appendTaskType, String cboInfo, String optimizedSQL) throws Exception {
+      boolean jsonOutput, boolean isExtended, boolean appendTaskType, String cboInfo,
+      String cboPlan, String optimizedSQL) throws Exception {
 
     // If the user asked for a formatted output, dump the json output
     // in the output stream
@@ -244,6 +251,15 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
 
     if (jsonOutput) {
       out = null;
+    }
+
+    if (cboPlan != null) {
+      if (jsonOutput) {
+        outJSONObject.put("CBOPlan", cboPlan);
+      } else {
+        out.print("CBO PLAN:");
+        out.println(cboPlan);
+      }
     }
 
     if (optimizedSQL != null) {
@@ -383,7 +399,7 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
   }
 
   @Override
-  public int execute(DriverContext driverContext) {
+  public int execute() {
 
     PrintStream out = null;
     try {
@@ -392,8 +408,9 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
       out = new PrintStream(outS);
 
       if (work.isCbo()) {
-        if (work.getCboPlan() != null) {
-          outputCboPlan(work.getCboPlan(), out, work.isFormatted());
+        JSONObject jsonCBOPlan = getJSONCBOPlan(out, work);
+        if (work.isFormatted()) {
+          out.print(jsonCBOPlan);
         }
       } else if (work.isLogical()) {
         JSONObject jsonLogicalPlan = getJSONLogicalPlan(out, work);
@@ -509,7 +526,7 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
 
       SessionState.get().setActiveAuthorizer(authorizer);
       try {
-        Driver.doAuthorization(queryState.getHiveOperation(), analyzer, "");
+        CommandAuthorizer.doAuthorization(queryState.getHiveOperation(), analyzer, "");
       } finally {
         SessionState.get().setActiveAuthorizer(delegate);
       }
@@ -941,14 +958,8 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
 
           Object val = null;
           try {
-            if(postProcess(xpl_note)) {
-              val = m.invoke(work, inTest);
-            }
-            else{
-              val = m.invoke(work);
-            }
-          }
-          catch (InvocationTargetException ex) {
+            val = m.invoke(work);
+          } catch (InvocationTargetException ex) {
             // Ignore the exception, this may be caused by external jars
             val = null;
           }
@@ -1065,15 +1076,6 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
       return json;
     }
     return null;
-  }
-
-  /**
-   * use case: this is only use for testing purposes. For instance, we might
-   * want to sort the expressions in a filter so we get deterministic comparable
-   * golden files
-   */
-  private boolean postProcess(Explain exp) {
-    return exp.postProcess();
   }
 
   /**
@@ -1291,5 +1293,45 @@ public class ExplainTask extends Task<ExplainWork> implements Serializable {
   @Override
   public boolean canExecuteInParallel() {
     return false;
+  }
+
+
+  /**
+   * Returns EXPLAIN EXTENDED output for a semantically analyzed query.
+   *
+   * @param sem semantic analyzer for analyzed query
+   * @param plan query plan
+   * @param astTree AST tree dump
+   */
+  public static String getExplainOutput(BaseSemanticAnalyzer sem, QueryPlan plan, ASTNode astTree,
+      QueryState queryState, Context context, HiveConf conf) throws IOException {
+    String ret = null;
+    ExplainTask task = new ExplainTask();
+    task.initialize(queryState, plan, null, context);
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    PrintStream ps = new PrintStream(baos);
+    try {
+      List<Task<?>> rootTasks = sem.getAllRootTasks();
+      if (conf.getBoolVar(ConfVars.HIVE_SERVER2_WEBUI_SHOW_GRAPH)) {
+        JSONObject jsonPlan = task.getJSONPlan(
+            null, rootTasks, sem.getFetchTask(), true, true, true, sem.getCboInfo(),
+            plan.getOptimizedCBOPlan(), plan.getOptimizedQueryString());
+        if (jsonPlan.getJSONObject(ExplainTask.STAGE_DEPENDENCIES) != null &&
+            jsonPlan.getJSONObject(ExplainTask.STAGE_DEPENDENCIES).length() <=
+                conf.getIntVar(ConfVars.HIVE_SERVER2_WEBUI_MAX_GRAPH_SIZE)) {
+          ret = jsonPlan.toString();
+        } else {
+          ret = null;
+        }
+      } else {
+        task.getJSONPlan(ps, rootTasks, sem.getFetchTask(), false, true, true, sem.getCboInfo(),
+            plan.getOptimizedCBOPlan(), plan.getOptimizedQueryString());
+        ret = baos.toString();
+      }
+    } catch (Exception e) {
+      LOG.warn("Exception generating explain output: " + e, e);
+    }
+
+    return ret;
   }
 }

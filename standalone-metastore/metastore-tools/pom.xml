@@ -36,7 +36,6 @@
   <properties>
     <hive.version>4.0.0-SNAPSHOT</hive.version>
     <maven.surefire.version>2.20.1</maven.surefire.version>
-    <checkstyle.conf.dir>${basedir}/checkstyle</checkstyle.conf.dir>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <javac.errorprone.version>2.8</javac.errorprone.version>
@@ -46,6 +45,7 @@
     <junit.jupiter.api.version>5.2.0</junit.jupiter.api.version>
     <commons-math3.version>3.6.1</commons-math3.version>
     <jetbrain-annotation.version>16.0.2</jetbrain-annotation.version>
+    <standalone.metastore.path.to.root>..</standalone.metastore.path.to.root>
   </properties>
 
   <dependencyManagement>
@@ -54,11 +54,39 @@
         <groupId>org.apache.hive.hcatalog</groupId>
         <artifactId>hive-hcatalog-server-extensions</artifactId>
         <version>${hive.version}</version>
+        <exclusions>
+          <exclusion>
+            <groupId>org.apache.zookeeper</groupId>
+            <artifactId>zookeeper</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>org.apache.curator</groupId>
+            <artifactId>curator-client</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>org.apache.curator</groupId>
+            <artifactId>curator-framework</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>org.apache.curator</groupId>
+            <artifactId>curator-recipes</artifactId>
+          </exclusion>
+        </exclusions>
       </dependency>
       <dependency>
         <groupId>org.apache.hive</groupId>
         <artifactId>hive-common</artifactId>
         <version>${hive.version}</version>
+        <exclusions>
+          <exclusion>
+            <groupId>org.apache.zookeeper</groupId>
+            <artifactId>zookeeper</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>org.apache.curator</groupId>
+            <artifactId>curator-client</artifactId>
+          </exclusion>
+        </exclusions>
       </dependency>
       <dependency>
         <groupId>org.apache.hive</groupId>

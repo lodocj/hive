@@ -65,8 +65,6 @@ import org.apache.hadoop.hive.common.TableName;
 import org.apache.hadoop.hive.metastore.ColumnType;
 import org.apache.hadoop.hive.metastore.HiveMetaStore;
 import org.apache.hadoop.hive.metastore.IMetaStoreClient;
-import org.apache.hadoop.hive.metastore.RawStore;
-import org.apache.hadoop.hive.metastore.TableType;
 import org.apache.hadoop.hive.metastore.Warehouse;
 import org.apache.hadoop.hive.metastore.api.ColumnStatistics;
 import org.apache.hadoop.hive.metastore.api.ColumnStatisticsObj;
@@ -113,6 +111,8 @@ import javax.annotation.Nullable;
 public class MetaStoreServerUtils {
   private static final Charset ENCODING = StandardCharsets.UTF_8;
   private static final Logger LOG = LoggerFactory.getLogger(MetaStoreServerUtils.class);
+
+  public static final String JUNIT_DATABASE_PREFIX = "junit_metastore_db";
 
   /**
    * Helper function to transform Nulls to empty strings.
@@ -559,11 +559,11 @@ public class MetaStoreServerUtils {
     if (!madeDir) {
       // The partition location already existed and may contain data. Lets try to
       // populate those statistics that don't require a full scan of the data.
-      LOG.warn("Updating partition stats fast for: " + part.getTableName());
+      LOG.info("Updating partition stats fast for: {}", part.getTableName());
       List<FileStatus> fileStatus = wh.getFileStatusesForLocation(part.getLocation());
       // TODO: this is invalid for ACID tables, and we cannot access AcidUtils here.
       populateQuickStats(fileStatus, params);
-      LOG.warn("Updated size to " + params.get(StatsSetupConst.TOTAL_SIZE));
+      LOG.info("Updated size to {}", params.get(StatsSetupConst.TOTAL_SIZE));
       updateBasicState(environmentContext, params);
     }
     part.setParameters(params);

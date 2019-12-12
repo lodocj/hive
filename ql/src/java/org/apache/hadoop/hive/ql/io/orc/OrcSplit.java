@@ -32,6 +32,7 @@ import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.io.AcidInputFormat;
+import org.apache.hadoop.hive.ql.io.AcidOutputFormat;
 import org.apache.hadoop.hive.ql.io.AcidUtils;
 import org.apache.hadoop.hive.ql.io.ColumnarSplit;
 import org.apache.hadoop.hive.ql.io.LlapAwareSplit;
@@ -64,6 +65,9 @@ public class OrcSplit extends FileSplit implements ColumnarSplit, LlapAwareSplit
   private long projColsUncompressedSize;
   private transient Object fileKey;
   private long fileLen;
+  private transient long writeId = 0;
+  private transient int bucketId = 0;
+  private transient int stmtId = 0;
 
   /**
    * This contains the synthetic ROW__ID offset and bucket properties for original file splits in an ACID table.
@@ -269,44 +273,25 @@ public class OrcSplit extends FileSplit implements ColumnarSplit, LlapAwareSplit
 
   @Override
   public boolean canUseLlapIo(Configuration conf) {
-    final boolean hasDelta = deltas != null && !deltas.isEmpty();
-    final boolean isAcidRead = AcidUtils.isFullAcidScan(conf);
-    final boolean isVectorized = Utilities.getIsVectorized(conf);
-    Boolean isSplitUpdate = null;
-    if (isAcidRead) {
-      final AcidUtils.AcidOperationalProperties acidOperationalProperties
-          = AcidUtils.getAcidOperationalProperties(conf);
-      isSplitUpdate = acidOperationalProperties.isSplitUpdate();
-      // TODO: this is brittle. Who said everyone has to upgrade using upgrade process?
-      assert isSplitUpdate : "should be true in Hive 3.0";
-    }
-
-    if (isOriginal) {
-      if (!isAcidRead && !hasDelta) {
-        // Original scan only
-        return true;
+    if (AcidUtils.isFullAcidScan(conf)) {
+      if (HiveConf.getBoolVar(conf, ConfVars.LLAP_IO_ACID_ENABLED)
+              && Utilities.getIsVectorized(conf)) {
+        boolean hasDeleteDelta = deltas != null && !deltas.isEmpty();
+        return VectorizedOrcAcidRowBatchReader.canUseLlapIoForAcid(this, hasDeleteDelta, conf);
+      } else {
+        LOG.info("Skipping Llap IO based on the following: [vectorized={}, hive.llap.io.acid={}] for {}",
+            Utilities.getIsVectorized(conf), HiveConf.getBoolVar(conf, ConfVars.LLAP_IO_ACID_ENABLED), this);
+        return false;
       }
     } else {
-      boolean isAcidEnabled = HiveConf.getBoolVar(conf, ConfVars.LLAP_IO_ACID_ENABLED);
-      if (isAcidEnabled && isAcidRead && hasBase && isVectorized) {
-        if (hasDelta) {
-          if (isSplitUpdate) {
-            // Base with delete deltas
-            return true;
-          }
-        } else {
-          // Base scan only
-          return true;
-        }
-      }
+      return true;
     }
-    return false;
   }
 
   /**
    * Used for generating synthetic ROW__IDs for reading "original" files.
    */
-  static final class OffsetAndBucketProperty {
+  public static final class OffsetAndBucketProperty {
     private final long rowIdOffset;
     private final int bucketProperty;
     private final long syntheticWriteId;
@@ -327,6 +312,38 @@ public class OrcSplit extends FileSplit implements ColumnarSplit, LlapAwareSplit
     public long getSyntheticWriteId() {
       return syntheticWriteId;
     }
+  }
+  
+  /**
+   * Note: this is the write id as seen in the file name that contains this split
+   * For files that have min/max writeId, this is the starting one.  
+   * @return
+   */
+  public long getWriteId() {
+    return writeId;
+  }
+
+  public int getStatementId() {
+    return stmtId;
+  }
+
+  /**
+   * Note: this is the bucket number as seen in the file name that contains this split.
+   * Hive 3.0 encodes a bunch of info in the Acid schema's bucketId attribute.
+   * See: {@link org.apache.hadoop.hive.ql.io.BucketCodec#V1} for details.
+   * @return
+   */
+  public int getBucketId() {
+    return bucketId;
+  }
+
+  public void parse(Configuration conf) throws IOException {
+    OrcRawRecordMerger.TransactionMetaData tmd =
+        OrcRawRecordMerger.TransactionMetaData.findWriteIDForSynthetcRowIDs(getPath(), rootDir, conf);
+    writeId = tmd.syntheticWriteId;
+    stmtId = tmd.statementId;
+    AcidOutputFormat.Options opt = AcidUtils.parseBaseOrDeltaBucketFilename(getPath(), conf);
+    bucketId = opt.getBucketId();
   }
 
   @Override

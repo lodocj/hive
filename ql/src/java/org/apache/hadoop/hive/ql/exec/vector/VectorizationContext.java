@@ -42,8 +42,11 @@ import org.apache.hadoop.hive.ql.exec.vector.expressions.CastBooleanToStringViaL
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastBooleanToVarCharViaLongToVarChar;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastCharToBinary;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastDateToChar;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.CastDateToCharWithFormat;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastDateToString;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.CastDateToStringWithFormat;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastDateToVarChar;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.CastDateToVarCharWithFormat;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastDecimalToChar;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastDecimalToDecimal;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastDecimalToString;
@@ -65,12 +68,17 @@ import org.apache.hadoop.hive.ql.exec.vector.expressions.CastMillisecondsLongToT
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastStringGroupToChar;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastStringGroupToVarChar;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastStringToBoolean;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.CastStringToDateWithFormat;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastStringToDecimal;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.CastStringToTimestampWithFormat;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastTimestampToChar;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.CastTimestampToCharWithFormat;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastTimestampToDecimal;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastTimestampToDouble;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastTimestampToString;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.CastTimestampToStringWithFormat;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.CastTimestampToVarChar;
+import org.apache.hadoop.hive.ql.exec.vector.expressions.CastTimestampToVarCharWithFormat;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.ConstantVectorExpression;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.ConvertDecimal64ToDecimal;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.Decimal64ColumnInList;
@@ -155,6 +163,7 @@ import org.apache.hadoop.hive.ql.exec.vector.expressions.gen.TimestampColumnBetw
 import org.apache.hadoop.hive.ql.exec.vector.expressions.gen.TimestampColumnNotBetween;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.gen.VarCharColumnBetween;
 import org.apache.hadoop.hive.ql.exec.vector.expressions.gen.VarCharColumnNotBetween;
+import org.apache.hadoop.hive.serde.serdeConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.hive.common.type.DataTypePhysicalVariation;
@@ -609,6 +618,7 @@ import com.google.common.annotations.VisibleForTesting;
     udfsNeedingImplicitDecimalCast.add(GenericUDFOPGreaterThan.class);
     udfsNeedingImplicitDecimalCast.add(GenericUDFOPEqualOrGreaterThan.class);
     udfsNeedingImplicitDecimalCast.add(GenericUDFBetween.class);
+    udfsNeedingImplicitDecimalCast.add(GenericUDFWhen.class);
     udfsNeedingImplicitDecimalCast.add(UDFSqrt.class);
     udfsNeedingImplicitDecimalCast.add(UDFRand.class);
     udfsNeedingImplicitDecimalCast.add(UDFLn.class);
@@ -659,7 +669,6 @@ import com.google.common.annotations.VisibleForTesting;
     private final int initialOutputCol;
     private int outputColCount = 0;
     private boolean reuseScratchColumns = true;
-    private boolean dontReuseTrackedScratchColumns = false;
 
     protected OutputColumnManager(int initialOutputCol) {
       this.initialOutputCol = initialOutputCol;
@@ -675,6 +684,7 @@ import com.google.common.annotations.VisibleForTesting;
     private boolean[] scratchColumnTrackWasUsed = new boolean[100];
 
     private final Set<Integer> usedOutputColumns = new HashSet<>();
+    private boolean[] markedScratchColumns;
 
     int allocateOutputColumn(TypeInfo typeInfo) throws HiveException {
       return allocateOutputColumn(typeInfo, DataTypePhysicalVariation.NONE);
@@ -704,7 +714,7 @@ import com.google.common.annotations.VisibleForTesting;
               scratchDataTypePhysicalVariations[i] == dataTypePhysicalVariation)) {
           continue;
         }
-        if (dontReuseTrackedScratchColumns && scratchColumnTrackWasUsed[i]) {
+        if (scratchColumnTrackWasUsed[i]) {
           continue;
         }
         //Use i
@@ -769,13 +779,25 @@ import com.google.common.annotations.VisibleForTesting;
       this.reuseScratchColumns = reuseColumns;
     }
 
-    public void clearScratchColumnWasUsedTracking() {
-      Arrays.fill(scratchColumnTrackWasUsed, false);
+    public void freeMarkedScratchColumns() {
+      if (markedScratchColumns == null) {
+        throw new RuntimeException("Illegal call");
+      }
+      for (int i = 0; i < markedScratchColumns.length; i++) {
+        if (markedScratchColumns[i]) {
+          scratchColumnTrackWasUsed[i] = false;
+        }
+      }
+      markedScratchColumns = null;
     }
 
-    public void setDontReuseTrackedScratchColumns(boolean dontReuseTrackedScratchColumns) {
-      this.dontReuseTrackedScratchColumns = dontReuseTrackedScratchColumns;
+    public void markScratchColumns() {
+      if (markedScratchColumns != null) {
+        throw new RuntimeException("Illegal call");
+      }
+      markedScratchColumns = Arrays.copyOf(scratchColumnTrackWasUsed, scratchColumnTrackWasUsed.length);
     }
+
   }
 
   public int allocateScratchColumn(TypeInfo typeInfo) throws HiveException {
@@ -786,17 +808,25 @@ import com.google.common.annotations.VisibleForTesting;
     return ocm.currentScratchColumns();
   }
 
-  public void clearScratchColumnWasUsedTracking() {
-    ocm.clearScratchColumnWasUsedTracking();
+  /**
+   * Marks all actual scratch columns.
+   *
+   * They can be decomissioned with {@link #freeMarkedScratchColumns()}.
+   */
+  public void markActualScratchColumns() {
+    ocm.markScratchColumns();
   }
 
-  public void setDontReuseTrackedScratchColumns(boolean dontReuseTrackedScratchColumns) {
-    ocm.setDontReuseTrackedScratchColumns(dontReuseTrackedScratchColumns);
+  /**
+   * Frees up actually marked scract columns.
+   */
+  public void freeMarkedScratchColumns() {
+    ocm.freeMarkedScratchColumns();
   }
 
   private VectorExpression getFilterOnBooleanColumnExpression(ExprNodeColumnDesc exprDesc,
       int columnNum) throws HiveException {
-    VectorExpression expr;
+    final VectorExpression expr;
 
     // Evaluate the column as a boolean, converting if necessary.
     TypeInfo typeInfo = exprDesc.getTypeInfo();
@@ -1165,6 +1195,23 @@ import com.google.common.annotations.VisibleForTesting;
           childrenWithCasts.add(child);
         }
       }
+    } else if(genericUDF instanceof GenericUDFWhen) {
+      boolean hasElseClause = children.size() % 2 == 1 ;
+      for (int i=0; i<children.size(); i++) {
+        ExprNodeDesc castExpression = null;
+        if (i % 2 == 1) {
+          castExpression = getImplicitCastExpression(genericUDF, children.get(i), commonType);
+        }
+        if(hasElseClause && i == children.size()-1) {
+          castExpression = getImplicitCastExpression(genericUDF, children.get(i), commonType);
+        }
+        if (castExpression != null) {
+          atleastOneCastNeeded = true;
+          childrenWithCasts.add(castExpression);
+        } else {
+          childrenWithCasts.add(children.get(i));
+        }
+      }
     } else {
       for (ExprNodeDesc child : children) {
         ExprNodeDesc castExpression = getImplicitCastExpression(genericUDF, child, commonType);
@@ -1259,8 +1306,8 @@ import com.google.common.annotations.VisibleForTesting;
     } else {
 
       // Casts to exact types including long to double etc. are needed in some special cases.
-      if (udf instanceof GenericUDFCoalesce || udf instanceof GenericUDFNvl
-          || udf instanceof GenericUDFElt || udf instanceof GenericUDFIf) {
+      if (udf instanceof GenericUDFCoalesce || udf instanceof GenericUDFElt
+          || udf instanceof GenericUDFIf) {
         GenericUDF genericUdf = getGenericUDFForCast(castType);
         List<ExprNodeDesc> children = new ArrayList<>();
         children.add(child);
@@ -1366,10 +1413,10 @@ import com.google.common.annotations.VisibleForTesting;
           || udfClass.equals(UDFRegExpExtract.class)
           || udfClass.equals(UDFRegExpReplace.class)
           || udfClass.equals(UDFConv.class)
-          || udfClass.equals(UDFFromUnixTime.class) && isIntFamily(arg0Type(expr))
           || isCastToIntFamily(udfClass) && isStringFamily(arg0Type(expr))
           || isCastToFloatFamily(udfClass) && isStringFamily(arg0Type(expr));
-    } else if ((gudf instanceof GenericUDFTimestamp && isStringFamily(arg0Type(expr)))
+    } else if (gudf instanceof GenericUDFFromUnixTime && isIntFamily(arg0Type(expr))
+          || (gudf instanceof GenericUDFTimestamp && isStringFamily(arg0Type(expr)))
 
             /* GenericUDFCase and GenericUDFWhen are implemented with the UDF Adaptor because
              * of their complexity and generality. In the future, variations of these
@@ -1392,8 +1439,9 @@ import com.google.common.annotations.VisibleForTesting;
                    || arg0Type(expr).equals("double")
                    || arg0Type(expr).equals("float"))) {
       return true;
-    } else
-        return gudf instanceof GenericUDFBetween && (mode == VectorExpressionDescriptor.Mode.PROJECTION);
+    } else {
+      return gudf instanceof GenericUDFBetween && (mode == VectorExpressionDescriptor.Mode.PROJECTION);
+    }
   }
 
   public static boolean isCastToIntFamily(Class<? extends UDF> udfClass) {
@@ -1517,6 +1565,9 @@ import com.google.common.annotations.VisibleForTesting;
       outCol = ocm.allocateOutputColumn(typeInfo);
     }
     if (constantValue == null) {
+      if (typeInfo.getCategory() != Category.PRIMITIVE) {
+        throw new HiveException("Complex type constants (" + typeInfo.getCategory() + ") not supported for type name " + typeName);
+      }
       return new ConstantVectorExpression(outCol, typeInfo, true);
     }
 
@@ -1672,6 +1723,7 @@ import com.google.common.annotations.VisibleForTesting;
     boolean anyDecimal64Expr = false;
     boolean isDecimal64ScaleEstablished = false;
     int decimal64ColumnScale = 0;
+    boolean hasConstants = false;
 
     for (int i = 0; i < numChildren; i++) {
       ExprNodeDesc childExpr = childExprs.get(i);
@@ -1699,6 +1751,7 @@ import com.google.common.annotations.VisibleForTesting;
         }
         builder.setInputExpressionType(i, InputExpressionType.COLUMN);
       } else if (childExpr instanceof ExprNodeConstantDesc) {
+        hasConstants = true;
         if (isNullConst(childExpr)) {
           // Cannot handle NULL scalar parameter.
           return null;
@@ -1725,12 +1778,20 @@ import com.google.common.annotations.VisibleForTesting;
 
     final boolean isReturnDecimal64 = checkTypeInfoForDecimal64(returnTypeInfo);
     final DataTypePhysicalVariation returnDataTypePhysicalVariation;
+    final boolean dontRescaleArguments = (genericUdf instanceof GenericUDFOPMultiply);
     if (isReturnDecimal64) {
       DecimalTypeInfo returnDecimalTypeInfo = (DecimalTypeInfo) returnTypeInfo;
       if (!isDecimal64ScaleEstablished) {
         decimal64ColumnScale = returnDecimalTypeInfo.getScale();
         isDecimal64ScaleEstablished = true;
-      } else if (returnDecimalTypeInfo.getScale() != decimal64ColumnScale) {
+      } else if (genericUdf instanceof GenericUDFOPDivide) {
+        // Check possible overflow during decimal64 division for intermediate result
+        // if yes then skip the optimization
+        DecimalTypeInfo leftType = (DecimalTypeInfo)childExprs.get(0).getTypeInfo();
+        if((leftType.precision() + returnDecimalTypeInfo.getScale()) > 18) {
+          return null;
+        }
+      } else if (returnDecimalTypeInfo.getScale() != decimal64ColumnScale && !dontRescaleArguments) {
         return null;
       }
       returnDataTypePhysicalVariation = DataTypePhysicalVariation.DECIMAL_64;
@@ -1744,6 +1805,9 @@ import com.google.common.annotations.VisibleForTesting;
       returnDataTypePhysicalVariation = DataTypePhysicalVariation.NONE;
     }
 
+    if(dontRescaleArguments && hasConstants) {
+      builder.setUnscaled(true);
+    }
     VectorExpressionDescriptor.Descriptor descriptor = builder.build();
     Class<?> vectorClass =
         this.vMap.getVectorExpressionClass(udfClass, descriptor, useCheckedVectorExpressions);
@@ -1756,13 +1820,15 @@ import com.google.common.annotations.VisibleForTesting;
     return createDecimal64VectorExpression(
         vectorClass, childExprs, childrenMode,
         isDecimal64ScaleEstablished, decimal64ColumnScale,
-        returnTypeInfo, returnDataTypePhysicalVariation);
+        returnTypeInfo, returnDataTypePhysicalVariation, dontRescaleArguments);
   }
 
+  @SuppressWarnings("null")
   private VectorExpression createDecimal64VectorExpression(Class<?> vectorClass,
       List<ExprNodeDesc> childExprs, VectorExpressionDescriptor.Mode childrenMode,
       boolean isDecimal64ScaleEstablished, int decimal64ColumnScale,
-      TypeInfo returnTypeInfo, DataTypePhysicalVariation returnDataTypePhysicalVariation)
+      TypeInfo returnTypeInfo, DataTypePhysicalVariation returnDataTypePhysicalVariation,
+      boolean dontRescaleArguments)
           throws HiveException {
 
     final int numChildren = childExprs.size();
@@ -1812,9 +1878,11 @@ import com.google.common.annotations.VisibleForTesting;
             // For now, bail out on decimal constants with larger scale than column scale.
             return null;
           }
-          final long decimal64Scalar =
-              new HiveDecimalWritable(hiveDecimal).serialize64(decimal64ColumnScale);
-          arguments[i] = decimal64Scalar;
+          if (dontRescaleArguments) {
+            arguments[i] = new HiveDecimalWritable(hiveDecimal).serialize64(hiveDecimal.scale());
+          } else {
+            arguments[i] = new HiveDecimalWritable(hiveDecimal).serialize64(decimal64ColumnScale);
+          }
         } else {
           Object scalarValue = getVectorTypeScalarValue(constDesc);
           arguments[i] =
@@ -1915,10 +1983,10 @@ import com.google.common.annotations.VisibleForTesting;
         builder.setInputExpressionType(i, InputExpressionType.COLUMN);
       } else if (child instanceof ExprNodeConstantDesc) {
         if (isNullConst(child)) {
-          // Cannot handle NULL scalar parameter.
-          return null;
+          builder.setInputExpressionType(i, InputExpressionType.NULLSCALAR);
+        }else {
+          builder.setInputExpressionType(i, InputExpressionType.SCALAR);
         }
-        builder.setInputExpressionType(i, InputExpressionType.SCALAR);
       } else if (child instanceof ExprNodeDynamicValueDesc) {
         builder.setInputExpressionType(i, InputExpressionType.DYNAMICVALUE);
       } else {
@@ -2074,9 +2142,7 @@ import com.google.common.annotations.VisibleForTesting;
       vectorExpression.setChildExpressions(children.toArray(new VectorExpression[0]));
     }
 
-    for (VectorExpression ve : children) {
-      ocm.freeOutputColumn(ve.getOutputColumnNum());
-    }
+    freeNonColumns(children.toArray(new VectorExpression[0]));
 
     return vectorExpression;
   }
@@ -2236,10 +2302,7 @@ import com.google.common.annotations.VisibleForTesting;
       ve = getWhenExpression(childExpr, mode, returnType);
     } else if (udf instanceof GenericUDFOPPositive) {
       ve = getIdentityExpression(childExpr);
-    } else if (udf instanceof GenericUDFCoalesce || udf instanceof GenericUDFNvl) {
-
-      // Coalesce is a special case because it can take variable number of arguments.
-      // Nvl is a specialization of the Coalesce.
+    } else if (udf instanceof GenericUDFCoalesce) {
       ve = getCoalesceExpression(childExpr, mode, returnType);
     } else if (udf instanceof GenericUDFElt) {
 
@@ -2269,6 +2332,8 @@ import com.google.common.annotations.VisibleForTesting;
       ve = new BucketNumExpression(outCol);
       ve.setInputTypeInfos(returnType);
       ve.setOutputTypeInfo(returnType);
+    } else if (udf instanceof GenericUDFCastFormat) {
+      ve = getCastWithFormat(udf, childExpr, returnType);
     }
     if (ve != null) {
       return ve;
@@ -2715,7 +2780,8 @@ import com.google.common.annotations.VisibleForTesting;
             cl, childExpr.subList(0, 1), VectorExpressionDescriptor.Mode.PROJECTION,
             /* isDecimal64ScaleEstablished */ true,
             /* decimal64ColumnScale */ scale,
-            returnType, DataTypePhysicalVariation.NONE);
+            returnType, DataTypePhysicalVariation.NONE,
+            /* dontRescaleArguments */ false);
         if (expr != null) {
           long[] inVals = new long[childrenForInList.size()];
           for (int i = 0; i != inVals.length; i++) {
@@ -3279,6 +3345,56 @@ import com.google.common.annotations.VisibleForTesting;
     return null;
   }
 
+  private VectorExpression getCastWithFormat(
+      GenericUDF udf, List<ExprNodeDesc> childExpr, TypeInfo returnType) throws HiveException {
+    String inputType = childExpr.get(1).getTypeString();
+    childExpr.remove(0); // index 0 not needed since we know returnType
+
+    Class<?> veClass = getCastFormatVectorExpressionClass(childExpr, returnType, inputType);
+    return createVectorExpression(
+        veClass, childExpr, VectorExpressionDescriptor.Mode.PROJECTION, returnType);
+  }
+
+  private Class<?> getCastFormatVectorExpressionClass(List<ExprNodeDesc> childExpr,
+      TypeInfo returnType, String inputType) throws HiveException {
+    switch (inputType) {
+    case serdeConstants.TIMESTAMP_TYPE_NAME:
+      if (returnType.getTypeName().equals(serdeConstants.STRING_TYPE_NAME)) {
+        return CastTimestampToStringWithFormat.class;
+      }
+      if (returnType.getTypeName().startsWith(serdeConstants.VARCHAR_TYPE_NAME)) {
+        return CastTimestampToVarCharWithFormat.class;
+      }
+      if (returnType.getTypeName().startsWith(serdeConstants.CHAR_TYPE_NAME)) {
+        return CastTimestampToCharWithFormat.class;
+      }
+    case serdeConstants.DATE_TYPE_NAME:
+      if (returnType.getTypeName().equals(serdeConstants.STRING_TYPE_NAME)) {
+        return CastDateToStringWithFormat.class;
+      }
+      if (returnType.getTypeName().startsWith(serdeConstants.VARCHAR_TYPE_NAME)) {
+        return CastDateToVarCharWithFormat.class;
+      }
+      if (returnType.getTypeName().startsWith(serdeConstants.CHAR_TYPE_NAME)) {
+        return CastDateToCharWithFormat.class;
+      }
+    default: //keep going
+    }
+    if (inputType.equals(serdeConstants.STRING_TYPE_NAME)
+        || inputType.startsWith(serdeConstants.CHAR_TYPE_NAME)
+        || inputType.startsWith(serdeConstants.VARCHAR_TYPE_NAME)) {
+      switch (returnType.getTypeName()) {
+      case serdeConstants.TIMESTAMP_TYPE_NAME:
+        return CastStringToTimestampWithFormat.class;
+      case serdeConstants.DATE_TYPE_NAME:
+        return CastStringToDateWithFormat.class;
+      default: //keep going
+      }
+    }
+    throw new HiveException(
+        "Expression cast " + inputType + " to " + returnType + " format not" + " vectorizable");
+  }
+
   private VectorExpression tryDecimal64Between(VectorExpressionDescriptor.Mode mode, boolean isNot,
       ExprNodeDesc colExpr, List<ExprNodeDesc> childrenAfterNot, TypeInfo returnTypeInfo)
           throws HiveException {
@@ -3293,7 +3409,8 @@ import com.google.common.annotations.VisibleForTesting;
             cl, childrenAfterNot, VectorExpressionDescriptor.Mode.PROJECTION,
             /* isDecimal64ScaleEstablished */ true,
             /* decimal64ColumnScale */ ((DecimalTypeInfo) colExpr.getTypeInfo()).getScale(),
-            returnTypeInfo, DataTypePhysicalVariation.NONE);
+            returnTypeInfo, DataTypePhysicalVariation.NONE,
+            /* dontRescaleArguments */ false);
   }
 
   /* Get a [NOT] BETWEEN filter or projection expression. This is treated as a special case
@@ -3967,10 +4084,10 @@ import com.google.common.annotations.VisibleForTesting;
     } else if (varcharTypePattern.matcher(typeString).matches()) {
       return ((HiveVarchar) constDesc.getValue()).getValue().getBytes(StandardCharsets.UTF_8);
     } else if (typeString.equalsIgnoreCase("boolean")) {
-      if (constDesc.getValue().equals(Boolean.TRUE)) {
-        return 1;
-      } else {
-        return 0;
+      if (constDesc.getValue() == null) {
+        return null;
+      }else{
+        return constDesc.getValue().equals(Boolean.TRUE) ? 1 : 0;
       }
     } else if (decimalTypePattern.matcher(typeString).matches()) {
       return constDesc.getValue();

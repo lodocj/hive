@@ -191,21 +191,19 @@ abstract public class AbstractBucketJoinProc implements NodeProcessor {
       String baseBigAlias,
       List<String> joinAliases) throws SemanticException {
 
-    LinkedHashMap<String, List<Integer>> tblAliasToNumberOfBucketsInEachPartition =
+    Map<String, List<Integer>> tblAliasToNumberOfBucketsInEachPartition =
         new LinkedHashMap<String, List<Integer>>();
-    LinkedHashMap<String, List<List<String>>> tblAliasToBucketedFilePathsInEachPartition =
+    Map<String, List<List<String>>> tblAliasToBucketedFilePathsInEachPartition =
         new LinkedHashMap<String, List<List<String>>>();
 
-    HashMap<String, TableScanOperator> topOps = pGraphContext.getTopOps();
+    Map<String, TableScanOperator> topOps = pGraphContext.getTopOps();
 
-    HashMap<String, String> aliasToNewAliasMap = new HashMap<String, String>();
+    Map<String, String> aliasToNewAliasMap = new HashMap<String, String>();
 
     // (partition to bucket file names) and (partition to bucket number) for
     // the big table;
-    LinkedHashMap<Partition, List<String>> bigTblPartsToBucketFileNames =
-        new LinkedHashMap<Partition, List<String>>();
-    LinkedHashMap<Partition, Integer> bigTblPartsToBucketNumber =
-        new LinkedHashMap<Partition, Integer>();
+    Map<Partition, List<String>> bigTblPartsToBucketFileNames = new LinkedHashMap<Partition, List<String>>();
+    Map<Partition, Integer> bigTblPartsToBucketNumber = new LinkedHashMap<Partition, Integer>();
 
     Integer[] joinKeyOrder = null; // accessing order of join cols to bucket cols, should be same
     boolean bigTablePartitioned = true;
@@ -316,7 +314,7 @@ abstract public class AbstractBucketJoinProc implements NodeProcessor {
         }
         List<String> fileNames =
             getBucketFilePathsOfPartition(tbl.getDataLocation(), pGraphContext);
-        Integer num = new Integer(tbl.getNumBuckets());
+        int num = tbl.getNumBuckets();
 
         // The number of files for the table should be same as number of buckets.
         if (fileNames.size() != 0 && fileNames.size() != num) {
@@ -332,7 +330,7 @@ abstract public class AbstractBucketJoinProc implements NodeProcessor {
           bigTblPartsToBucketNumber.put(null, tbl.getNumBuckets());
           bigTablePartitioned = false;
         } else {
-          tblAliasToNumberOfBucketsInEachPartition.put(alias, Arrays.asList(num));
+          tblAliasToNumberOfBucketsInEachPartition.put(alias, Arrays.asList(Integer.valueOf(num)));
           tblAliasToBucketedFilePathsInEachPartition.put(alias, Arrays.asList(fileNames));
         }
       }

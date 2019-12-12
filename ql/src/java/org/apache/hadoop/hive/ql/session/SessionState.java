@@ -27,11 +27,12 @@ import java.io.PrintStream;
 import java.lang.management.ManagementFactory;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.net.URLClassLoader;
-import java.sql.Timestamp;
+import java.security.AccessController;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -55,11 +56,16 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hive.common.FileUtils;
 import org.apache.hadoop.hive.common.JavaUtils;
+import org.apache.hadoop.hive.common.io.SessionStream;
 import org.apache.hadoop.hive.common.log.ProgressMonitor;
+import org.apache.hadoop.hive.common.type.Timestamp;
+import org.apache.hadoop.hive.common.type.TimestampTZ;
+import org.apache.hadoop.hive.common.type.TimestampTZUtil;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.conf.HiveConfUtil;
 import org.apache.hadoop.hive.metastore.ObjectStore;
+import org.apache.hadoop.hive.metastore.PersistenceManagerProvider;
 import org.apache.hadoop.hive.metastore.Warehouse;
 import org.apache.hadoop.hive.metastore.api.ColumnStatisticsObj;
 import org.apache.hadoop.hive.metastore.api.MetaException;
@@ -67,6 +73,7 @@ import org.apache.hadoop.hive.metastore.cache.CachedStore;
 import org.apache.hadoop.hive.metastore.conf.MetastoreConf;
 import org.apache.hadoop.hive.metastore.utils.MetaStoreUtils;
 import org.apache.hadoop.hive.ql.MapRedStats;
+import org.apache.hadoop.hive.ql.exec.AddToClassPathAction;
 import org.apache.hadoop.hive.ql.exec.FunctionInfo;
 import org.apache.hadoop.hive.ql.exec.Registry;
 import org.apache.hadoop.hive.ql.exec.Utilities;
@@ -84,8 +91,8 @@ import org.apache.hadoop.hive.ql.log.PerfLogger;
 import org.apache.hadoop.hive.ql.metadata.Hive;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.metadata.HiveUtils;
-import org.apache.hadoop.hive.ql.metadata.SessionHiveMetaStoreClient;
 import org.apache.hadoop.hive.ql.metadata.Table;
+import org.apache.hadoop.hive.ql.metadata.TempTable;
 import org.apache.hadoop.hive.ql.security.HiveAuthenticationProvider;
 import org.apache.hadoop.hive.ql.security.authorization.HiveAuthorizationProvider;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.AuthorizationMetaStoreFilterHook;
@@ -116,7 +123,7 @@ import com.google.common.collect.Maps;
 public class SessionState {
   private static final Logger LOG = LoggerFactory.getLogger(SessionState.class);
 
-  private static final String TMP_PREFIX = "_tmp_space.db";
+  public static final String TMP_PREFIX = "_tmp_space.db";
   private static final String LOCAL_SESSION_PATH_KEY = "_hive.local.session.path";
   private static final String HDFS_SESSION_PATH_KEY = "_hive.hdfs.session.path";
   private static final String TMP_TABLE_SPACE_KEY = "_hive.tmp_table_space";
@@ -129,7 +136,7 @@ public class SessionState {
   private final Map<String, Map<String, Table>> tempTables = new ConcurrentHashMap<>();
   private final Map<String, Map<String, ColumnStatisticsObj>> tempTableColStats =
       new ConcurrentHashMap<>();
-  private final Map<String, SessionHiveMetaStoreClient.TempTable> tempPartitions =
+  private final Map<String, TempTable> tempPartitions =
       new ConcurrentHashMap<>();
 
   protected ClassLoader parentLoader;
@@ -175,9 +182,9 @@ public class SessionState {
    * Streams to read/write from.
    */
   public InputStream in;
-  public PrintStream out;
-  public PrintStream info;
-  public PrintStream err;
+  public SessionStream out;
+  public SessionStream info;
+  public SessionStream err;
   /**
    * Standard output from any child process(es).
    */
@@ -304,7 +311,7 @@ public class SessionState {
   /**
    * CURRENT_TIMESTAMP value for query
    */
-  private Timestamp queryCurrentTimestamp;
+  private Instant queryCurrentTimestamp;
 
   private final ResourceMaps resourceMaps;
 
@@ -418,7 +425,9 @@ public class SessionState {
     // classloader as parent can pollute the session. See HIVE-11878
     parentLoader = SessionState.class.getClassLoader();
     // Make sure that each session has its own UDFClassloader. For details see {@link UDFClassLoader}
-    final ClassLoader currentLoader = Utilities.createUDFClassLoader((URLClassLoader) parentLoader, new String[]{});
+    AddToClassPathAction addAction = new AddToClassPathAction(
+        parentLoader, Collections.emptyList(), true);
+    final ClassLoader currentLoader = AccessController.doPrivileged(addAction);
     this.sessionConf.setClassLoader(currentLoader);
     resourceDownloader = new ResourceDownloader(conf,
         HiveConf.getVar(conf, ConfVars.DOWNLOADED_RESOURCES_DIR));
@@ -448,7 +457,7 @@ public class SessionState {
     final String currThreadName = Thread.currentThread().getName();
     if (!currThreadName.contains(logPrefix)) {
       final String newThreadName = logPrefix + " " + currThreadName;
-      LOG.info("Updating thread name to {}", newThreadName);
+      LOG.debug("Updating thread name to {}", newThreadName);
       Thread.currentThread().setName(newThreadName);
     }
   }
@@ -459,7 +468,7 @@ public class SessionState {
     final String currThreadName = Thread.currentThread().getName();
     if (currThreadName.contains(logPrefix)) {
       final String[] names = currThreadName.split(logPrefix);
-      LOG.info("Resetting thread name to {}", names[names.length - 1]);
+      LOG.debug("Resetting thread name to {}", names[names.length - 1]);
       Thread.currentThread().setName(names[names.length - 1].trim());
     }
   }
@@ -1320,58 +1329,57 @@ public class SessionState {
     if (ArrayUtils.isEmpty(jarPaths)) {
       return;
     }
-
-    URLClassLoader currentCLoader =
-        (URLClassLoader) SessionState.get().getConf().getClassLoader();
-    currentCLoader =
-        (URLClassLoader) Utilities.addToClassPath(currentCLoader, jarPaths);
+    AddToClassPathAction addAction = new AddToClassPathAction(
+        SessionState.get().getConf().getClassLoader(), Arrays.asList(jarPaths)
+        );
+    final ClassLoader currentCLoader = AccessController.doPrivileged(addAction);
     sessionConf.setClassLoader(currentCLoader);
     Thread.currentThread().setContextClassLoader(currentCLoader);
   }
 
   /**
    * Reload the jars under the path specified in hive.reloadable.aux.jars.path property.
+   *
    * @throws IOException
    */
   public void loadReloadableAuxJars() throws IOException {
-    final Set<String> reloadedAuxJars = new HashSet<String>();
+    LOG.info("Reloading auxiliary JAR files");
 
     final String renewableJarPath = sessionConf.getVar(ConfVars.HIVERELOADABLEJARS);
     // do nothing if this property is not specified or empty
-    if (renewableJarPath == null || renewableJarPath.isEmpty()) {
+    if (StringUtils.isBlank(renewableJarPath)) {
+      LOG.warn("Configuration {} not specified", ConfVars.HIVERELOADABLEJARS);
       return;
     }
 
-    Set<String> jarPaths = FileUtils.getJarFilesByPath(renewableJarPath, sessionConf);
-
     // load jars under the hive.reloadable.aux.jars.path
-    if(!jarPaths.isEmpty()){
-      reloadedAuxJars.addAll(jarPaths);
-    }
+    final Set<String> jarPaths = FileUtils.getJarFilesByPath(renewableJarPath, sessionConf);
+
+    LOG.info("Auxiliary JAR files discovered for reload: {}", jarPaths);
 
     // remove the previous renewable jars
-    if (preReloadableAuxJars != null && !preReloadableAuxJars.isEmpty()) {
+    if (!preReloadableAuxJars.isEmpty()) {
       Utilities.removeFromClassPath(preReloadableAuxJars.toArray(new String[0]));
     }
 
-    if (reloadedAuxJars != null && !reloadedAuxJars.isEmpty()) {
-      URLClassLoader currentCLoader =
-          (URLClassLoader) SessionState.get().getConf().getClassLoader();
-      currentCLoader =
-          (URLClassLoader) Utilities.addToClassPath(currentCLoader,
-              reloadedAuxJars.toArray(new String[0]));
+    if (!jarPaths.isEmpty()) {
+      AddToClassPathAction addAction = new AddToClassPathAction(
+          SessionState.get().getConf().getClassLoader(), jarPaths);
+      final ClassLoader currentCLoader = AccessController.doPrivileged(addAction);
       sessionConf.setClassLoader(currentCLoader);
       Thread.currentThread().setContextClassLoader(currentCLoader);
     }
+
     preReloadableAuxJars.clear();
-    preReloadableAuxJars.addAll(reloadedAuxJars);
+    preReloadableAuxJars.addAll(jarPaths);
   }
 
   static void registerJars(List<String> newJars) throws IllegalArgumentException {
     LogHelper console = getConsole();
     try {
-      ClassLoader loader = Thread.currentThread().getContextClassLoader();
-      ClassLoader newLoader = Utilities.addToClassPath(loader, newJars.toArray(new String[0]));
+      AddToClassPathAction addAction = new AddToClassPathAction(
+          Thread.currentThread().getContextClassLoader(), newJars);
+      final ClassLoader newLoader = AccessController.doPrivileged(addAction);
       Thread.currentThread().setContextClassLoader(newLoader);
       SessionState.get().getConf().setClassLoader(newLoader);
       console.printInfo("Added " + newJars + " to class path");
@@ -1497,7 +1505,7 @@ public class SessionState {
         Set<String> downloadedValues = new HashSet<String>();
 
         for (URI uri : downloadedURLs) {
-          String resourceValue = uri.toString();
+          String resourceValue = uri.getPath();
           downloadedValues.add(resourceValue);
           localized.add(resourceValue);
           if (reverseResourcePathMap.containsKey(resourceValue)) {
@@ -1819,7 +1827,7 @@ public class SessionState {
         }
         Class<?> clazz = Class.forName(realStoreImpl);
         if (ObjectStore.class.isAssignableFrom(clazz)) {
-          ObjectStore.unCacheDataNucleusClassLoaders();
+          PersistenceManagerProvider.clearOutPmfClassLoaderCache();
         }
       }
     } catch (Exception e) {
@@ -1916,7 +1924,7 @@ public class SessionState {
   public Map<String, Map<String, Table>> getTempTables() {
     return tempTables;
   }
-  public Map<String, SessionHiveMetaStoreClient.TempTable> getTempPartitions() {
+  public Map<String, TempTable> getTempPartitions() {
     return tempPartitions;
   }
 
@@ -1959,14 +1967,16 @@ public class SessionState {
    * Initialize current timestamp, other necessary query initialization.
    */
   public void setupQueryCurrentTimestamp() {
-    queryCurrentTimestamp = new Timestamp(System.currentTimeMillis());
+    queryCurrentTimestamp = Instant.now();
 
     // Provide a facility to set current timestamp during tests
     if (sessionConf.getBoolVar(ConfVars.HIVE_IN_TEST)) {
       String overrideTimestampString =
           HiveConf.getVar(sessionConf, HiveConf.ConfVars.HIVETESTCURRENTTIMESTAMP, (String)null);
       if (overrideTimestampString != null && overrideTimestampString.length() > 0) {
-        queryCurrentTimestamp = Timestamp.valueOf(overrideTimestampString);
+        TimestampTZ zonedDateTime = TimestampTZUtil.convert(
+            Timestamp.valueOf(overrideTimestampString), sessionConf.getLocalTimeZone());
+        queryCurrentTimestamp = zonedDateTime.getZonedDateTime().toInstant();
       }
     }
   }
@@ -1975,7 +1985,7 @@ public class SessionState {
    * Get query current timestamp
    * @return
    */
-  public Timestamp getQueryCurrentTimestamp() {
+  public Instant getQueryCurrentTimestamp() {
     return queryCurrentTimestamp;
   }
 

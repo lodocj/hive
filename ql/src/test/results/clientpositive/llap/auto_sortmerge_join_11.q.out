@@ -1,8 +1,10 @@
 PREHOOK: query: CREATE TABLE bucket_small_n11 (key string, value string) partitioned by (ds string) CLUSTERED BY (key) SORTED BY (KEY) INTO 2 BUCKETS STORED AS TEXTFILE
+TBLPROPERTIES('bucketing_version'='1')
 PREHOOK: type: CREATETABLE
 PREHOOK: Output: database:default
 PREHOOK: Output: default@bucket_small_n11
 POSTHOOK: query: CREATE TABLE bucket_small_n11 (key string, value string) partitioned by (ds string) CLUSTERED BY (key) SORTED BY (KEY) INTO 2 BUCKETS STORED AS TEXTFILE
+TBLPROPERTIES('bucketing_version'='1')
 POSTHOOK: type: CREATETABLE
 POSTHOOK: Output: database:default
 POSTHOOK: Output: default@bucket_small_n11
@@ -24,10 +26,12 @@ POSTHOOK: type: LOAD
 #### A masked pattern was here ####
 POSTHOOK: Output: default@bucket_small_n11@ds=2008-04-08
 PREHOOK: query: CREATE TABLE bucket_big_n11 (key string, value string) partitioned by (ds string) CLUSTERED BY (key) SORTED BY(KEY) INTO 4 BUCKETS STORED AS TEXTFILE
+TBLPROPERTIES('bucketing_version'='1')
 PREHOOK: type: CREATETABLE
 PREHOOK: Output: database:default
 PREHOOK: Output: default@bucket_big_n11
 POSTHOOK: query: CREATE TABLE bucket_big_n11 (key string, value string) partitioned by (ds string) CLUSTERED BY (key) SORTED BY(KEY) INTO 4 BUCKETS STORED AS TEXTFILE
+TBLPROPERTIES('bucketing_version'='1')
 POSTHOOK: type: CREATETABLE
 POSTHOOK: Output: database:default
 POSTHOOK: Output: default@bucket_big_n11
@@ -138,22 +142,22 @@ STAGE PLANS:
                 TableScan
                   alias: a
                   filterExpr: key is not null (type: boolean)
-                  Statistics: Num rows: 2 Data size: 1508 Basic stats: PARTIAL Column stats: NONE
+                  Statistics: Num rows: 2 Data size: 368 Basic stats: PARTIAL Column stats: NONE
                   GatherStats: false
                   Filter Operator
                     isSamplingPred: false
                     predicate: key is not null (type: boolean)
-                    Statistics: Num rows: 2 Data size: 1508 Basic stats: PARTIAL Column stats: NONE
+                    Statistics: Num rows: 2 Data size: 368 Basic stats: PARTIAL Column stats: NONE
                     Select Operator
                       expressions: key (type: string)
                       outputColumnNames: _col0
-                      Statistics: Num rows: 2 Data size: 1508 Basic stats: PARTIAL Column stats: NONE
+                      Statistics: Num rows: 2 Data size: 368 Basic stats: PARTIAL Column stats: NONE
                       Reduce Output Operator
                         key expressions: _col0 (type: string)
                         null sort order: a
                         sort order: +
                         Map-reduce partition columns: _col0 (type: string)
-                        Statistics: Num rows: 2 Data size: 1508 Basic stats: PARTIAL Column stats: NONE
+                        Statistics: Num rows: 2 Data size: 368 Basic stats: PARTIAL Column stats: NONE
                         tag: 0
                         auto parallelism: true
             Execution mode: vectorized, llap
@@ -195,7 +199,7 @@ STAGE PLANS:
                       SORTBUCKETCOLSPREFIX TRUE
                       bucket_count 2
                       bucket_field_name key
-                      bucketing_version 2
+                      bucketing_version 1
                       column.name.delimiter ,
                       columns key,value
                       columns.comments 
@@ -218,22 +222,22 @@ STAGE PLANS:
                 TableScan
                   alias: b
                   filterExpr: key is not null (type: boolean)
-                  Statistics: Num rows: 240 Data size: 158376 Basic stats: PARTIAL Column stats: NONE
+                  Statistics: Num rows: 240 Data size: 39008 Basic stats: PARTIAL Column stats: NONE
                   GatherStats: false
                   Filter Operator
                     isSamplingPred: false
                     predicate: key is not null (type: boolean)
-                    Statistics: Num rows: 228 Data size: 150457 Basic stats: PARTIAL Column stats: NONE
+                    Statistics: Num rows: 211 Data size: 34294 Basic stats: PARTIAL Column stats: NONE
                     Select Operator
                       expressions: key (type: string)
                       outputColumnNames: _col0
-                      Statistics: Num rows: 228 Data size: 150457 Basic stats: PARTIAL Column stats: NONE
+                      Statistics: Num rows: 211 Data size: 34294 Basic stats: PARTIAL Column stats: NONE
                       Reduce Output Operator
                         key expressions: _col0 (type: string)
                         null sort order: a
                         sort order: +
                         Map-reduce partition columns: _col0 (type: string)
-                        Statistics: Num rows: 228 Data size: 150457 Basic stats: PARTIAL Column stats: NONE
+                        Statistics: Num rows: 211 Data size: 34294 Basic stats: PARTIAL Column stats: NONE
                         tag: 1
                         auto parallelism: true
             Execution mode: vectorized, llap
@@ -275,7 +279,7 @@ STAGE PLANS:
                       SORTBUCKETCOLSPREFIX TRUE
                       bucket_count 4
                       bucket_field_name key
-                      bucketing_version 2
+                      bucketing_version 1
                       column.name.delimiter ,
                       columns key,value
                       columns.comments 
@@ -325,7 +329,7 @@ STAGE PLANS:
                       SORTBUCKETCOLSPREFIX TRUE
                       bucket_count 4
                       bucket_field_name key
-                      bucketing_version 2
+                      bucketing_version 1
                       column.name.delimiter ,
                       columns key,value
                       columns.comments 
@@ -355,9 +359,10 @@ STAGE PLANS:
                   0 _col0 (type: string)
                   1 _col0 (type: string)
                 Position of Big Table: 1
-                Statistics: Num rows: 250 Data size: 165502 Basic stats: PARTIAL Column stats: NONE
+                Statistics: Num rows: 232 Data size: 37723 Basic stats: PARTIAL Column stats: NONE
                 Group By Operator
                   aggregations: count()
+                  minReductionHashAggr: 0.99
                   mode: hash
                   outputColumnNames: _col0
                   Statistics: Num rows: 1 Data size: 8 Basic stats: PARTIAL Column stats: NONE
@@ -463,16 +468,16 @@ STAGE PLANS:
                 TableScan
                   alias: a
                   filterExpr: key is not null (type: boolean)
-                  Statistics: Num rows: 2 Data size: 1508 Basic stats: PARTIAL Column stats: NONE
+                  Statistics: Num rows: 2 Data size: 368 Basic stats: PARTIAL Column stats: NONE
                   GatherStats: false
                   Filter Operator
                     isSamplingPred: false
                     predicate: key is not null (type: boolean)
-                    Statistics: Num rows: 2 Data size: 1508 Basic stats: PARTIAL Column stats: NONE
+                    Statistics: Num rows: 2 Data size: 368 Basic stats: PARTIAL Column stats: NONE
                     Select Operator
                       expressions: key (type: string)
                       outputColumnNames: _col0
-                      Statistics: Num rows: 2 Data size: 1508 Basic stats: PARTIAL Column stats: NONE
+                      Statistics: Num rows: 2 Data size: 368 Basic stats: PARTIAL Column stats: NONE
             Path -> Alias:
 #### A masked pattern was here ####
             Path -> Partition:
@@ -509,7 +514,7 @@ STAGE PLANS:
                       SORTBUCKETCOLSPREFIX TRUE
                       bucket_count 2
                       bucket_field_name key
-                      bucketing_version 2
+                      bucketing_version 1
                       column.name.delimiter ,
                       columns key,value
                       columns.comments 
@@ -531,16 +536,16 @@ STAGE PLANS:
                 TableScan
                   alias: b
                   filterExpr: key is not null (type: boolean)
-                  Statistics: Num rows: 240 Data size: 158376 Basic stats: PARTIAL Column stats: NONE
+                  Statistics: Num rows: 240 Data size: 39008 Basic stats: PARTIAL Column stats: NONE
                   GatherStats: false
                   Filter Operator
                     isSamplingPred: false
                     predicate: key is not null (type: boolean)
-                    Statistics: Num rows: 228 Data size: 150457 Basic stats: PARTIAL Column stats: NONE
+                    Statistics: Num rows: 211 Data size: 34294 Basic stats: PARTIAL Column stats: NONE
                     Select Operator
                       expressions: key (type: string)
                       outputColumnNames: _col0
-                      Statistics: Num rows: 228 Data size: 150457 Basic stats: PARTIAL Column stats: NONE
+                      Statistics: Num rows: 211 Data size: 34294 Basic stats: PARTIAL Column stats: NONE
                       Merge Join Operator
                         condition map:
                              Inner Join 0 to 1
@@ -548,9 +553,10 @@ STAGE PLANS:
                           0 _col0 (type: string)
                           1 _col0 (type: string)
                         Position of Big Table: 1
-                        Statistics: Num rows: 250 Data size: 165502 Basic stats: PARTIAL Column stats: NONE
+                        Statistics: Num rows: 232 Data size: 37723 Basic stats: PARTIAL Column stats: NONE
                         Group By Operator
                           aggregations: count()
+                          minReductionHashAggr: 0.99
                           mode: hash
                           outputColumnNames: _col0
                           Statistics: Num rows: 1 Data size: 8 Basic stats: PARTIAL Column stats: NONE
@@ -598,7 +604,7 @@ STAGE PLANS:
                       SORTBUCKETCOLSPREFIX TRUE
                       bucket_count 4
                       bucket_field_name key
-                      bucketing_version 2
+                      bucketing_version 1
                       column.name.delimiter ,
                       columns key,value
                       columns.comments 
@@ -647,7 +653,7 @@ STAGE PLANS:
                       SORTBUCKETCOLSPREFIX TRUE
                       bucket_count 4
                       bucket_field_name key
-                      bucketing_version 2
+                      bucketing_version 1
                       column.name.delimiter ,
                       columns key,value
                       columns.comments 
@@ -796,7 +802,7 @@ STAGE PLANS:
                       SORTBUCKETCOLSPREFIX TRUE
                       bucket_count 2
                       bucket_field_name key
-                      bucketing_version 2
+                      bucketing_version 1
                       column.name.delimiter ,
                       columns key,value
                       columns.comments 
@@ -834,6 +840,7 @@ STAGE PLANS:
                       Statistics: Num rows: 250 Data size: 165502 Basic stats: PARTIAL Column stats: NONE
                       Group By Operator
                         aggregations: count()
+                        minReductionHashAggr: 0.99
                         mode: hash
                         outputColumnNames: _col0
                         Statistics: Num rows: 1 Data size: 8 Basic stats: PARTIAL Column stats: NONE
@@ -881,7 +888,7 @@ STAGE PLANS:
                       SORTBUCKETCOLSPREFIX TRUE
                       bucket_count 4
                       bucket_field_name key
-                      bucketing_version 2
+                      bucketing_version 1
                       column.name.delimiter ,
                       columns key,value
                       columns.comments 
@@ -930,7 +937,7 @@ STAGE PLANS:
                       SORTBUCKETCOLSPREFIX TRUE
                       bucket_count 4
                       bucket_field_name key
-                      bucketing_version 2
+                      bucketing_version 1
                       column.name.delimiter ,
                       columns key,value
                       columns.comments 
@@ -1029,7 +1036,8 @@ STAGE PLANS:
     Tez
 #### A masked pattern was here ####
       Edges:
-        Reducer 3 <- Map 2 (CUSTOM_SIMPLE_EDGE)
+        Reducer 3 <- Map 2 (SIMPLE_EDGE), Map 5 (SIMPLE_EDGE)
+        Reducer 4 <- Reducer 3 (CUSTOM_SIMPLE_EDGE)
 #### A masked pattern was here ####
       Vertices:
         Map 2 
@@ -1079,7 +1087,7 @@ STAGE PLANS:
                       SORTBUCKETCOLSPREFIX TRUE
                       bucket_count 2
                       bucket_field_name key
-                      bucketing_version 2
+                      bucketing_version 1
                       column.name.delimiter ,
                       columns key,value
                       columns.comments 
@@ -1099,120 +1107,6 @@ STAGE PLANS:
               /bucket_small_n11/ds=2008-04-08 [a]
             Map Operator Tree:
                 TableScan
-                  alias: c
-                  filterExpr: key is not null (type: boolean)
-                  Statistics: Num rows: 240 Data size: 158376 Basic stats: PARTIAL Column stats: NONE
-                  GatherStats: false
-                  Filter Operator
-                    isSamplingPred: false
-                    predicate: key is not null (type: boolean)
-                    Statistics: Num rows: 228 Data size: 150457 Basic stats: PARTIAL Column stats: NONE
-            Path -> Alias:
-#### A masked pattern was here ####
-            Path -> Partition:
-#### A masked pattern was here ####
-                Partition
-                  input format: org.apache.hadoop.mapred.TextInputFormat
-                  output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
-                  partition values:
-                    ds 2008-04-08
-                  properties:
-                    bucket_count 4
-                    bucket_field_name key
-                    column.name.delimiter ,
-                    columns key,value
-                    columns.comments 
-                    columns.types string:string
-#### A masked pattern was here ####
-                    name default.bucket_big_n11
-                    numFiles 4
-                    numRows 0
-                    partition_columns ds
-                    partition_columns.types string
-                    rawDataSize 0
-                    serialization.ddl struct bucket_big_n11 { string key, string value}
-                    serialization.format 1
-                    serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
-                    totalSize 5812
-#### A masked pattern was here ####
-                  serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
-                
-                    input format: org.apache.hadoop.mapred.TextInputFormat
-                    output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
-                    properties:
-                      SORTBUCKETCOLSPREFIX TRUE
-                      bucket_count 4
-                      bucket_field_name key
-                      bucketing_version 2
-                      column.name.delimiter ,
-                      columns key,value
-                      columns.comments 
-                      columns.types string:string
-#### A masked pattern was here ####
-                      name default.bucket_big_n11
-                      partition_columns ds
-                      partition_columns.types string
-                      serialization.ddl struct bucket_big_n11 { string key, string value}
-                      serialization.format 1
-                      serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
-#### A masked pattern was here ####
-                    serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
-                    name: default.bucket_big_n11
-                  name: default.bucket_big_n11
-#### A masked pattern was here ####
-                Partition
-                  input format: org.apache.hadoop.mapred.TextInputFormat
-                  output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
-                  partition values:
-                    ds 2008-04-09
-                  properties:
-                    bucket_count 4
-                    bucket_field_name key
-                    column.name.delimiter ,
-                    columns key,value
-                    columns.comments 
-                    columns.types string:string
-#### A masked pattern was here ####
-                    name default.bucket_big_n11
-                    numFiles 4
-                    numRows 0
-                    partition_columns ds
-                    partition_columns.types string
-                    rawDataSize 0
-                    serialization.ddl struct bucket_big_n11 { string key, string value}
-                    serialization.format 1
-                    serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
-                    totalSize 5812
-#### A masked pattern was here ####
-                  serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
-                
-                    input format: org.apache.hadoop.mapred.TextInputFormat
-                    output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
-                    properties:
-                      SORTBUCKETCOLSPREFIX TRUE
-                      bucket_count 4
-                      bucket_field_name key
-                      bucketing_version 2
-                      column.name.delimiter ,
-                      columns key,value
-                      columns.comments 
-                      columns.types string:string
-#### A masked pattern was here ####
-                      name default.bucket_big_n11
-                      partition_columns ds
-                      partition_columns.types string
-                      serialization.ddl struct bucket_big_n11 { string key, string value}
-                      serialization.format 1
-                      serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
-#### A masked pattern was here ####
-                    serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
-                    name: default.bucket_big_n11
-                  name: default.bucket_big_n11
-            Truncated Path -> Alias:
-              /bucket_big_n11/ds=2008-04-08 [c]
-              /bucket_big_n11/ds=2008-04-09 [c]
-            Map Operator Tree:
-                TableScan
                   alias: b
                   filterExpr: key is not null (type: boolean)
                   Statistics: Num rows: 240 Data size: 158376 Basic stats: PARTIAL Column stats: NONE
@@ -1224,25 +1118,20 @@ STAGE PLANS:
                     Merge Join Operator
                       condition map:
                            Inner Join 0 to 1
-                           Inner Join 0 to 2
                       keys:
                         0 key (type: string)
                         1 key (type: string)
-                        2 key (type: string)
+                      outputColumnNames: _col0
                       Position of Big Table: 1
-                      Statistics: Num rows: 501 Data size: 331005 Basic stats: PARTIAL Column stats: NONE
-                      Group By Operator
-                        aggregations: count()
-                        mode: hash
-                        outputColumnNames: _col0
-                        Statistics: Num rows: 1 Data size: 8 Basic stats: PARTIAL Column stats: NONE
-                        Reduce Output Operator
-                          null sort order: 
-                          sort order: 
-                          Statistics: Num rows: 1 Data size: 8 Basic stats: PARTIAL Column stats: NONE
-                          tag: -1
-                          value expressions: _col0 (type: bigint)
-                          auto parallelism: false
+                      Statistics: Num rows: 250 Data size: 165502 Basic stats: PARTIAL Column stats: NONE
+                      Reduce Output Operator
+                        key expressions: _col0 (type: string)
+                        null sort order: a
+                        sort order: +
+                        Map-reduce partition columns: _col0 (type: string)
+                        Statistics: Num rows: 250 Data size: 165502 Basic stats: PARTIAL Column stats: NONE
+                        tag: 0
+                        auto parallelism: true
             Execution mode: llap
             Path -> Alias:
 #### A masked pattern was here ####
@@ -1280,7 +1169,7 @@ STAGE PLANS:
                       SORTBUCKETCOLSPREFIX TRUE
                       bucket_count 4
                       bucket_field_name key
-                      bucketing_version 2
+                      bucketing_version 1
                       column.name.delimiter ,
                       columns key,value
                       columns.comments 
@@ -1329,7 +1218,7 @@ STAGE PLANS:
                       SORTBUCKETCOLSPREFIX TRUE
                       bucket_count 4
                       bucket_field_name key
-                      bucketing_version 2
+                      bucketing_version 1
                       column.name.delimiter ,
                       columns key,value
                       columns.comments 
@@ -1348,7 +1237,159 @@ STAGE PLANS:
             Truncated Path -> Alias:
               /bucket_big_n11/ds=2008-04-08 [b]
               /bucket_big_n11/ds=2008-04-09 [b]
+        Map 5 
+            Map Operator Tree:
+                TableScan
+                  alias: c
+                  filterExpr: key is not null (type: boolean)
+                  Statistics: Num rows: 240 Data size: 158376 Basic stats: PARTIAL Column stats: NONE
+                  GatherStats: false
+                  Filter Operator
+                    isSamplingPred: false
+                    predicate: key is not null (type: boolean)
+                    Statistics: Num rows: 228 Data size: 150457 Basic stats: PARTIAL Column stats: NONE
+                    Reduce Output Operator
+                      key expressions: key (type: string)
+                      null sort order: a
+                      sort order: +
+                      Map-reduce partition columns: key (type: string)
+                      Statistics: Num rows: 228 Data size: 150457 Basic stats: PARTIAL Column stats: NONE
+                      tag: 1
+                      auto parallelism: true
+            Execution mode: vectorized, llap
+            LLAP IO: no inputs
+            Path -> Alias:
+#### A masked pattern was here ####
+            Path -> Partition:
+#### A masked pattern was here ####
+                Partition
+                  base file name: ds=2008-04-08
+                  input format: org.apache.hadoop.mapred.TextInputFormat
+                  output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                  partition values:
+                    ds 2008-04-08
+                  properties:
+                    bucket_count 4
+                    bucket_field_name key
+                    column.name.delimiter ,
+                    columns key,value
+                    columns.comments 
+                    columns.types string:string
+#### A masked pattern was here ####
+                    name default.bucket_big_n11
+                    numFiles 4
+                    numRows 0
+                    partition_columns ds
+                    partition_columns.types string
+                    rawDataSize 0
+                    serialization.ddl struct bucket_big_n11 { string key, string value}
+                    serialization.format 1
+                    serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                    totalSize 5812
+#### A masked pattern was here ####
+                  serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                
+                    input format: org.apache.hadoop.mapred.TextInputFormat
+                    output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                    properties:
+                      SORTBUCKETCOLSPREFIX TRUE
+                      bucket_count 4
+                      bucket_field_name key
+                      bucketing_version 1
+                      column.name.delimiter ,
+                      columns key,value
+                      columns.comments 
+                      columns.types string:string
+#### A masked pattern was here ####
+                      name default.bucket_big_n11
+                      partition_columns ds
+                      partition_columns.types string
+                      serialization.ddl struct bucket_big_n11 { string key, string value}
+                      serialization.format 1
+                      serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+#### A masked pattern was here ####
+                    serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                    name: default.bucket_big_n11
+                  name: default.bucket_big_n11
+#### A masked pattern was here ####
+                Partition
+                  base file name: ds=2008-04-09
+                  input format: org.apache.hadoop.mapred.TextInputFormat
+                  output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                  partition values:
+                    ds 2008-04-09
+                  properties:
+                    bucket_count 4
+                    bucket_field_name key
+                    column.name.delimiter ,
+                    columns key,value
+                    columns.comments 
+                    columns.types string:string
+#### A masked pattern was here ####
+                    name default.bucket_big_n11
+                    numFiles 4
+                    numRows 0
+                    partition_columns ds
+                    partition_columns.types string
+                    rawDataSize 0
+                    serialization.ddl struct bucket_big_n11 { string key, string value}
+                    serialization.format 1
+                    serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                    totalSize 5812
+#### A masked pattern was here ####
+                  serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                
+                    input format: org.apache.hadoop.mapred.TextInputFormat
+                    output format: org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat
+                    properties:
+                      SORTBUCKETCOLSPREFIX TRUE
+                      bucket_count 4
+                      bucket_field_name key
+                      bucketing_version 1
+                      column.name.delimiter ,
+                      columns key,value
+                      columns.comments 
+                      columns.types string:string
+#### A masked pattern was here ####
+                      name default.bucket_big_n11
+                      partition_columns ds
+                      partition_columns.types string
+                      serialization.ddl struct bucket_big_n11 { string key, string value}
+                      serialization.format 1
+                      serialization.lib org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+#### A masked pattern was here ####
+                    serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+                    name: default.bucket_big_n11
+                  name: default.bucket_big_n11
+            Truncated Path -> Alias:
+              /bucket_big_n11/ds=2008-04-08 [c]
+              /bucket_big_n11/ds=2008-04-09 [c]
         Reducer 3 
+            Execution mode: llap
+            Needs Tagging: false
+            Reduce Operator Tree:
+              Merge Join Operator
+                condition map:
+                     Inner Join 0 to 1
+                keys:
+                  0 _col0 (type: string)
+                  1 key (type: string)
+                Position of Big Table: 0
+                Statistics: Num rows: 275 Data size: 182052 Basic stats: PARTIAL Column stats: NONE
+                Group By Operator
+                  aggregations: count()
+                  minReductionHashAggr: 0.99
+                  mode: hash
+                  outputColumnNames: _col0
+                  Statistics: Num rows: 1 Data size: 8 Basic stats: PARTIAL Column stats: NONE
+                  Reduce Output Operator
+                    null sort order: 
+                    sort order: 
+                    Statistics: Num rows: 1 Data size: 8 Basic stats: PARTIAL Column stats: NONE
+                    tag: -1
+                    value expressions: _col0 (type: bigint)
+                    auto parallelism: false
+        Reducer 4 
             Execution mode: vectorized, llap
             Needs Tagging: false
             Reduce Operator Tree:

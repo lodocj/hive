@@ -82,9 +82,12 @@ CREATE TABLE `CTLGS` (
     `NAME` VARCHAR(256),
     `DESC` VARCHAR(4000),
     `LOCATION_URI` VARCHAR(4000) NOT NULL,
+    `CREATE_TIME` INT(11),
     UNIQUE KEY `UNIQUE_CATALOG` (`NAME`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
+-- Insert a default value.  The location is TBD.  Hive will fix this when it starts
+INSERT INTO `CTLGS` VALUES (1, 'hive', 'Default catalog for Hive', 'TBD', NULL);
 
 --
 -- Table structure for table `DBS`
@@ -99,7 +102,8 @@ CREATE TABLE IF NOT EXISTS `DBS` (
   `NAME` varchar(128) CHARACTER SET latin1 COLLATE latin1_bin DEFAULT NULL,
   `OWNER_NAME` varchar(128) CHARACTER SET latin1 COLLATE latin1_bin DEFAULT NULL,
   `OWNER_TYPE` varchar(10) CHARACTER SET latin1 COLLATE latin1_bin DEFAULT NULL,
-  `CTLG_NAME` varchar(256) NOT NULL,
+  `CTLG_NAME` varchar(256) NOT NULL DEFAULT 'hive',
+  `CREATE_TIME` INT(11),
   PRIMARY KEY (`DB_ID`),
   UNIQUE KEY `UNIQUE_DATABASE` (`NAME`, `CTLG_NAME`),
   CONSTRAINT `CTLG_FK1` FOREIGN KEY (`CTLG_NAME`) REFERENCES `CTLGS` (`NAME`)

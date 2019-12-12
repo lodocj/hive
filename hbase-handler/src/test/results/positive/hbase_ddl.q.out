@@ -49,16 +49,13 @@ STAGE DEPENDENCIES:
 
 STAGE PLANS:
   Stage: Stage-0
-      Alter Table Operator:
-        Alter Table
-          type: drop props
-          old name: default.hbase_table_1
-          properties:
-            COLUMN_STATS_ACCURATE 
+    Unset Properties
+      table name: default.hbase_table_1
+      properties:
+        COLUMN_STATS_ACCURATE 
 
   Stage: Stage-1
-      Pre Insert operator:
-        Pre-Insert task
+    Pre-Insert task
 
   Stage: Stage-2
     Map Reduce
@@ -66,17 +63,17 @@ STAGE PLANS:
           TableScan
             alias: src
             filterExpr: ((UDFToDouble(key) % 2.0D) = 0.0D) (type: boolean)
-            Statistics: Num rows: 500 Data size: 5312 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 500 Data size: 89000 Basic stats: COMPLETE Column stats: COMPLETE
             Filter Operator
               predicate: ((UDFToDouble(key) % 2.0D) = 0.0D) (type: boolean)
-              Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 250 Data size: 44500 Basic stats: COMPLETE Column stats: COMPLETE
               Select Operator
                 expressions: UDFToInteger(key) (type: int), value (type: string)
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+                Statistics: Num rows: 250 Data size: 23750 Basic stats: COMPLETE Column stats: COMPLETE
                 File Output Operator
                   compressed: false
-                  Statistics: Num rows: 250 Data size: 2656 Basic stats: COMPLETE Column stats: NONE
+                  Statistics: Num rows: 250 Data size: 23750 Basic stats: COMPLETE Column stats: COMPLETE
                   table:
                       input format: org.apache.hadoop.hive.hbase.HiveHBaseTableInputFormat
                       output format: org.apache.hadoop.hive.hbase.HiveHBaseTableOutputFormat
@@ -119,7 +116,6 @@ Table Type:         	EXTERNAL_TABLE
 Table Parameters:	 	 
 	EXTERNAL            	TRUE                
 	bucketing_version   	2                   
-	discover.partitions 	true                
 	external.table.purge	true                
 	hbase.mapred.output.outputtable	kkk                 
 	hbase.table.name    	hbase_table_0       
@@ -169,7 +165,6 @@ Table Type:         	EXTERNAL_TABLE
 Table Parameters:	 	 
 	EXTERNAL            	TRUE                
 	bucketing_version   	2                   
-	discover.partitions 	true                
 	external.table.purge	true                
 	hbase.table.name    	hbase_table_0       
 #### A masked pattern was here ####

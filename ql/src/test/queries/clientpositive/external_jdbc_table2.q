@@ -1,5 +1,7 @@
 --! qt:dataset:src
 
+-- SORT_QUERY_RESULTS
+
 CREATE TEMPORARY FUNCTION dboutput AS 'org.apache.hadoop.hive.contrib.genericudf.example.GenericUDFDBOutput';
 
 FROM src
@@ -118,6 +120,11 @@ SELECT * FROM db1_ext_auth1 JOIN db1_ext_auth2 ON db1_ext_auth1.ikey = db1_ext_a
 SELECT * FROM db1_ext_auth1 JOIN db1_ext_auth2 ON db1_ext_auth1.ikey = db1_ext_auth2.ikey;
 
 EXPLAIN
+SELECT db1_ext_auth1.ikey, b.ikey * 2 FROM db1_ext_auth1 JOIN (SELECT * FROM db1_ext_auth1) b;
+
+SELECT db1_ext_auth1.ikey, b.ikey * 2 FROM db1_ext_auth1 JOIN (SELECT * FROM db1_ext_auth1) b;
+
+EXPLAIN
 SELECT * FROM db1_ext_auth1 UNION ALL SELECT * FROM db2_ext_auth2;
 
 SELECT * FROM db1_ext_auth1 UNION ALL SELECT * FROM db2_ext_auth2;
@@ -126,6 +133,42 @@ EXPLAIN
 SELECT * FROM db1_ext_auth1 UNION ALL SELECT * FROM db1_ext_auth2;
 
 SELECT * FROM db1_ext_auth1 UNION ALL SELECT * FROM db1_ext_auth2;
+
+EXPLAIN
+SELECT P.ikey
+FROM
+  db1_ext_auth1 P
+WHERE
+  NOT TRUE OR P.`ikey` IS NOT NULL
+  AND (P.`bkey` = 10 AND P.`dkey` = 15.15
+    OR P.`bkey` = 20 AND P.`dkey` = 25.25);
+
+SELECT P.ikey
+FROM
+  db1_ext_auth1 P
+WHERE
+  NOT TRUE OR P.`ikey` IS NOT NULL
+  AND (P.`bkey` = 10 AND P.`dkey` = 15.15
+    OR P.`bkey` = 20 AND P.`dkey` = 25.25);
+    
+EXPLAIN
+SELECT P.ikey
+FROM
+  db1_ext_auth1 P
+WHERE
+  NOT TRUE OR P.`ikey` IS NOT NULL
+  AND (P.`bkey` = 10 AND P.`dkey` = 15.15
+    OR P.`bkey` = 20 AND P.`dkey` = 25.25)
+  AND fkey = null;
+
+SELECT P.ikey
+FROM
+  db1_ext_auth1 P
+WHERE
+  NOT TRUE OR P.`ikey` IS NOT NULL
+  AND (P.`bkey` = 10 AND P.`dkey` = 15.15
+    OR P.`bkey` = 20 AND P.`dkey` = 25.25)
+  AND fkey = null;
 
 set hive.jdbc.pushdown.enable=false;
 

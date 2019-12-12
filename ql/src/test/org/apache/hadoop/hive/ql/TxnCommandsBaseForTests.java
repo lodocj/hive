@@ -17,6 +17,13 @@
  */
 package org.apache.hadoop.hive.ql;
 
+import java.io.File;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.FileUtil;
@@ -24,11 +31,14 @@ import org.apache.hadoop.fs.LocatedFileStatus;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.RemoteIterator;
 import org.apache.hadoop.hive.conf.HiveConf;
-import org.apache.hadoop.hive.metastore.api.MetaException;
 import org.apache.hadoop.hive.metastore.txn.TxnDbUtil;
 import org.apache.hadoop.hive.ql.io.HiveInputFormat;
-import org.apache.hadoop.hive.ql.processors.CommandProcessorResponse;
+import org.apache.hadoop.hive.ql.processors.CommandProcessorException;
 import org.apache.hadoop.hive.ql.session.SessionState;
+import org.apache.hadoop.hive.ql.txn.compactor.Cleaner;
+import org.apache.hadoop.hive.ql.txn.compactor.CompactorThread;
+import org.apache.hadoop.hive.ql.txn.compactor.Initiator;
+import org.apache.hadoop.hive.ql.txn.compactor.Worker;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -36,12 +46,6 @@ import org.junit.Rule;
 import org.junit.rules.TestName;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.File;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
 
 public abstract class TxnCommandsBaseForTests {
   private static final Logger LOG = LoggerFactory.getLogger(TxnCommandsBaseForTests.class);
@@ -51,7 +55,7 @@ public abstract class TxnCommandsBaseForTests {
   public TestName testName = new TestName();
   protected HiveConf hiveConf;
   Driver d;
-  enum Table {
+  public enum Table {
     ACIDTBL("acidTbl"),
     ACIDTBLPART("acidTblPart"),
     ACIDTBL2("acidTbl2"),
@@ -96,6 +100,7 @@ public abstract class TxnCommandsBaseForTests {
       .setVar(HiveConf.ConfVars.HIVE_AUTHORIZATION_MANAGER,
         "org.apache.hadoop.hive.ql.security.authorization.plugin.sqlstd.SQLStdHiveAuthorizerFactory");
     hiveConf.setBoolVar(HiveConf.ConfVars.MERGE_CARDINALITY_VIOLATION_CHECK, true);
+    HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.MERGE_SPLIT_UPDATE, true);
     hiveConf.setBoolVar(HiveConf.ConfVars.HIVESTATSCOLAUTOGATHER, false);
     hiveConf.setBoolean("mapred.input.dir.recursive", true);
     TxnDbUtil.setConfValues(hiveConf);
@@ -109,7 +114,7 @@ public abstract class TxnCommandsBaseForTests {
     }
     SessionState ss = SessionState.start(hiveConf);
     ss.applyAuthorizationPolicy();
-    d = new Driver(new QueryState.Builder().withHiveConf(hiveConf).nonIsolated().build(), null);
+    d = new Driver(new QueryState.Builder().withHiveConf(hiveConf).nonIsolated().build());
     d.setMaxRows(10000);
     dropTables();
     runStatementOnDriver("create table " + Table.ACIDTBL + "(a int, b int) clustered by (a) into " + BUCKET_COUNT + " buckets stored as orc TBLPROPERTIES ('transactional'='true')");
@@ -152,29 +157,57 @@ public abstract class TxnCommandsBaseForTests {
   protected String makeValuesClause(int[][] rows) {
     return TestTxnCommands2.makeValuesClause(rows);
   }
-
-  void runWorker(HiveConf hiveConf) throws MetaException {
-    TestTxnCommands2.runWorker(hiveConf);
+  public static void runWorker(HiveConf hiveConf) throws Exception {
+    runCompactorThread(hiveConf, CompactorThreadType.WORKER);
   }
-
-  void runCleaner(HiveConf hiveConf) throws MetaException {
-    TestTxnCommands2.runCleaner(hiveConf);
+  public static void runCleaner(HiveConf hiveConf) throws Exception {
+    runCompactorThread(hiveConf, CompactorThreadType.CLEANER);
+  }
+  public static void runInitiator(HiveConf hiveConf) throws Exception {
+    runCompactorThread(hiveConf, CompactorThreadType.INITIATOR);
+  }
+  private enum CompactorThreadType {INITIATOR, WORKER, CLEANER}
+  private static void runCompactorThread(HiveConf hiveConf, CompactorThreadType type)
+      throws Exception {
+    AtomicBoolean stop = new AtomicBoolean(true);
+    CompactorThread t = null;
+    switch (type) {
+      case INITIATOR:
+        t = new Initiator();
+        break;
+      case WORKER:
+        t = new Worker();
+        break;
+      case CLEANER:
+        t = new Cleaner();
+        break;
+      default:
+        throw new IllegalArgumentException("Unknown type: " + type);
+    }
+    t.setThreadId((int) t.getId());
+    t.setConf(hiveConf);
+    AtomicBoolean looped = new AtomicBoolean();
+    t.init(stop, looped);
+    t.run();
   }
 
   protected List<String> runStatementOnDriver(String stmt) throws Exception {
     LOG.info("Running the query: " + stmt);
-    CommandProcessorResponse cpr = d.run(stmt);
-    if(cpr.getResponseCode() != 0) {
-      throw new RuntimeException(stmt + " failed: " + cpr);
+    try {
+      d.run(stmt);
+    } catch (CommandProcessorException e) {
+      throw new RuntimeException(stmt + " failed: " + e);
     }
     List<String> rs = new ArrayList<String>();
     d.getResults(rs);
     return rs;
   }
-  CommandProcessorResponse runStatementOnDriverNegative(String stmt) throws Exception {
-    CommandProcessorResponse cpr = d.run(stmt);
-    if(cpr.getResponseCode() != 0) {
-      return cpr;
+
+  CommandProcessorException runStatementOnDriverNegative(String stmt) throws Exception {
+    try {
+      d.run(stmt);
+    } catch (CommandProcessorException e) {
+      return e;
     }
     throw new RuntimeException("Didn't get expected failure!");
   }

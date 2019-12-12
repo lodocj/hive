@@ -708,13 +708,13 @@ import org.slf4j.LoggerFactory;
           case 3: // INVALID_WRITE_IDS
             if (schemeField.type == org.apache.thrift.protocol.TType.LIST) {
               {
-                org.apache.thrift.protocol.TList _list626 = iprot.readListBegin();
-                struct.invalidWriteIds = new ArrayList<Long>(_list626.size);
-                long _elem627;
-                for (int _i628 = 0; _i628 < _list626.size; ++_i628)
+                org.apache.thrift.protocol.TList _list682 = iprot.readListBegin();
+                struct.invalidWriteIds = new ArrayList<Long>(_list682.size);
+                long _elem683;
+                for (int _i684 = 0; _i684 < _list682.size; ++_i684)
                 {
-                  _elem627 = iprot.readI64();
-                  struct.invalidWriteIds.add(_elem627);
+                  _elem683 = iprot.readI64();
+                  struct.invalidWriteIds.add(_elem683);
                 }
                 iprot.readListEnd();
               }
@@ -764,9 +764,9 @@ import org.slf4j.LoggerFactory;
         oprot.writeFieldBegin(INVALID_WRITE_IDS_FIELD_DESC);
         {
           oprot.writeListBegin(new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.I64, struct.invalidWriteIds.size()));
-          for (long _iter629 : struct.invalidWriteIds)
+          for (long _iter685 : struct.invalidWriteIds)
           {
-            oprot.writeI64(_iter629);
+            oprot.writeI64(_iter685);
           }
           oprot.writeListEnd();
         }
@@ -803,9 +803,9 @@ import org.slf4j.LoggerFactory;
       oprot.writeI64(struct.writeIdHighWaterMark);
       {
         oprot.writeI32(struct.invalidWriteIds.size());
-        for (long _iter630 : struct.invalidWriteIds)
+        for (long _iter686 : struct.invalidWriteIds)
         {
-          oprot.writeI64(_iter630);
+          oprot.writeI64(_iter686);
         }
       }
       oprot.writeBinary(struct.abortedBits);
@@ -827,13 +827,13 @@ import org.slf4j.LoggerFactory;
       struct.writeIdHighWaterMark = iprot.readI64();
       struct.setWriteIdHighWaterMarkIsSet(true);
       {
-        org.apache.thrift.protocol.TList _list631 = new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.I64, iprot.readI32());
-        struct.invalidWriteIds = new ArrayList<Long>(_list631.size);
-        long _elem632;
-        for (int _i633 = 0; _i633 < _list631.size; ++_i633)
+        org.apache.thrift.protocol.TList _list687 = new org.apache.thrift.protocol.TList(org.apache.thrift.protocol.TType.I64, iprot.readI32());
+        struct.invalidWriteIds = new ArrayList<Long>(_list687.size);
+        long _elem688;
+        for (int _i689 = 0; _i689 < _list687.size; ++_i689)
         {
-          _elem632 = iprot.readI64();
-          struct.invalidWriteIds.add(_elem632);
+          _elem688 = iprot.readI64();
+          struct.invalidWriteIds.add(_elem688);
         }
       }
       struct.setInvalidWriteIdsIsSet(true);

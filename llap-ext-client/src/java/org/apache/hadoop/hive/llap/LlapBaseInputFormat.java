@@ -31,12 +31,14 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.regex.Pattern;
 
 import org.apache.commons.collections4.ListUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
@@ -61,7 +63,6 @@ import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.InputSplit;
-import org.apache.hadoop.mapred.InputSplitWithLocationInfo;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordReader;
 import org.apache.hadoop.mapred.Reporter;
@@ -114,8 +115,11 @@ public class LlapBaseInputFormat<V extends WritableComparable<?>>
   public static final String PWD_KEY = "llap.if.pwd";
   public static final String HANDLE_ID = "llap.if.handleid";
   public static final String DB_KEY = "llap.if.database";
+  public static final String USE_NEW_SPLIT_FORMAT = "llap.if.use.new.split.format";
+  public static final String SESSION_QUERIES_FOR_GET_NUM_SPLITS = "llap.session.queries.for.get.num.splits";
+  public static final Pattern SET_QUERY_PATTERN = Pattern.compile("^\\s*set\\s+.*=.+$", Pattern.CASE_INSENSITIVE);
 
-  public final String SPLIT_QUERY = "select get_splits(\"%s\",%d)";
+  public static final String SPLIT_QUERY = "select get_llap_splits(\"%s\",%d)";
   public static final LlapServiceInstance[] serviceInstanceArray = new LlapServiceInstance[0];
 
   public LlapBaseInputFormat(String url, String user, String pwd, String query) {
@@ -168,18 +172,22 @@ public class LlapBaseInputFormat<V extends WritableComparable<?>>
           submitWorkInfo.getToken(), umbilicalResponder, llapToken);
 
     int attemptNum = 0;
-    // Use task attempt number from conf if provided
+    final int taskNum;
+    // Use task attempt number, task number from conf if provided
     TaskAttemptID taskAttemptId = TaskAttemptID.forName(job.get(MRJobConfig.TASK_ATTEMPT_ID));
     if (taskAttemptId != null) {
       attemptNum = taskAttemptId.getId();
+      taskNum = taskAttemptId.getTaskID().getId();
       if (LOG.isDebugEnabled()) {
-        LOG.debug("Setting attempt number to " + attemptNum + " from task attempt ID in conf: " +
-            job.get(MRJobConfig.TASK_ATTEMPT_ID));
+        LOG.debug("Setting attempt number to: {}, task number to: {} from given taskAttemptId: {} in conf",
+            attemptNum, taskNum, taskAttemptId);
       }
+    } else {
+      taskNum = llapSplit.getSplitNum();
     }
 
     SubmitWorkRequestProto request = constructSubmitWorkRequestProto(
-        submitWorkInfo, llapSplit.getSplitNum(), attemptNum, llapClient.getAddress(),
+        submitWorkInfo, taskNum, attemptNum, llapClient.getAddress(),
         submitWorkInfo.getToken(), llapSplit.getFragmentBytes(),
         llapSplit.getFragmentBytesSignature(), job);
     llapClient.submitWork(request, host, llapSubmitPort);
@@ -259,13 +267,57 @@ public class LlapBaseInputFormat<V extends WritableComparable<?>>
         if (database != null && !database.isEmpty()) {
           stmt.execute("USE " + database);
         }
+        String sessionQueries = job.get(SESSION_QUERIES_FOR_GET_NUM_SPLITS);
+        if (sessionQueries != null && !sessionQueries.trim().isEmpty()) {
+          String[] queries = sessionQueries.trim().split(",");
+          for (String q : queries) {
+            //allow only set queries
+            if (SET_QUERY_PATTERN.matcher(q).matches()) {
+              LOG.debug("Executing session query: {}", q);
+              stmt.execute(q);
+            } else {
+              LOG.warn("Only SET queries are allowed, not executing this query: {}", q);
+            }
+          }
+        }
+
+        // In case of USE_NEW_SPLIT_FORMAT=true, following format is used
+        //       type                  split
+        // schema-split             LlapInputSplit -- contains only schema
+        // plan-split               LlapInputSplit -- contains only planBytes[]
+        // 0                        LlapInputSplit -- actual split 1
+        // 1                        LlapInputSplit -- actual split 2
+        // ...                         ...
+        boolean useNewSplitFormat = job.getBoolean(USE_NEW_SPLIT_FORMAT, false);
+
         ResultSet res = stmt.executeQuery(sql);
+        int count = 0;
+        LlapInputSplit schemaSplit = null;
+        LlapInputSplit planSplit = null;
         while (res.next()) {
           // deserialize split
-          DataInput in = new DataInputStream(res.getBinaryStream(1));
-          InputSplitWithLocationInfo is = new LlapInputSplit();
+          DataInput in = new DataInputStream(res.getBinaryStream(2));
+          LlapInputSplit is = new LlapInputSplit();
           is.readFields(in);
-          ins.add(is);
+          if (useNewSplitFormat) {
+            ins.add(is);
+          } else {
+            // to keep the old format, populate schema and planBytes[] in actual splits
+            if (count == 0) {
+              schemaSplit = is;
+              if (numSplits == 0) {
+                ins.add(schemaSplit);
+              }
+            } else if (count == 1) {
+              planSplit = is;
+            } else {
+              is.setSchema(schemaSplit.getSchema());
+              assert planSplit != null;
+              is.setPlanBytes(planSplit.getPlanBytes());
+              ins.add(is);
+            }
+            count++;
+          }
         }
         res.close();
       } catch (Exception e) {
@@ -305,6 +357,10 @@ public class LlapBaseInputFormat<V extends WritableComparable<?>>
     synchronized (lock) {
       handleConnections = connectionMap.remove(handleId);
     }
+    closeConnections(handleId, handleConnections);
+  }
+
+  private static void closeConnections(String handleId, List<Connection> handleConnections) {
     if (handleConnections != null) {
       LOG.debug("Closing {} connections for handle ID {}", handleConnections.size(), handleId);
       for (Connection conn : handleConnections) {
@@ -324,11 +380,13 @@ public class LlapBaseInputFormat<V extends WritableComparable<?>>
    */
   public static void closeAll() {
     LOG.debug("Closing all handles");
-    for (String handleId : connectionMap.keySet()) {
-      try {
-        close(handleId);
-      } catch (Exception err) {
-        LOG.error("Error closing handle ID " + handleId, err);
+    synchronized (lock) {
+      Iterator<Map.Entry<String, List<Connection>>> itr = connectionMap.entrySet().iterator();
+      Map.Entry<String, List<Connection>> connHandle = null;
+      while (itr.hasNext()) {
+        connHandle = itr.next();
+        closeConnections(connHandle.getKey(), connHandle.getValue());
+        itr.remove();
       }
     }
   }

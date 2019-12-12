@@ -431,8 +431,8 @@ PLAN VECTORIZATION:
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-2 depends on stages: Stage-1
-  Stage-3 depends on stages: Stage-2, Stage-11, Stage-14
-  Stage-4 depends on stages: Stage-3
+  Stage-3 depends on stages: Stage-2, Stage-11
+  Stage-4 depends on stages: Stage-3, Stage-14
   Stage-5 depends on stages: Stage-4
   Stage-6 depends on stages: Stage-5
   Stage-7 depends on stages: Stage-6
@@ -450,36 +450,38 @@ STAGE PLANS:
           TableScan
             alias: ws1
             filterExpr: (ws_order_number is not null and ws_ship_date_sk is not null and ws_ship_addr_sk is not null and ws_web_site_sk is not null) (type: boolean)
-            Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+            Statistics: Num rows: 1 Data size: 240 Basic stats: COMPLETE Column stats: NONE
             Filter Operator
-              predicate: (ws_order_number is not null and ws_ship_addr_sk is not null and ws_ship_date_sk is not null and ws_web_site_sk is not null) (type: boolean)
-              Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              predicate: (ws_order_number is not null and ws_ship_date_sk is not null and ws_ship_addr_sk is not null and ws_web_site_sk is not null) (type: boolean)
+              Statistics: Num rows: 1 Data size: 240 Basic stats: COMPLETE Column stats: NONE
               Select Operator
                 expressions: ws_ship_date_sk (type: int), ws_ship_addr_sk (type: int), ws_web_site_sk (type: int), ws_order_number (type: int), ws_ext_ship_cost (type: decimal(7,2)), ws_net_profit (type: decimal(7,2))
                 outputColumnNames: _col0, _col1, _col2, _col3, _col4, _col5
-                Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                Statistics: Num rows: 1 Data size: 240 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
                   key expressions: _col1 (type: int)
+                  null sort order: a
                   sort order: +
                   Map-reduce partition columns: _col1 (type: int)
-                  Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                  Statistics: Num rows: 1 Data size: 240 Basic stats: COMPLETE Column stats: NONE
                   value expressions: _col0 (type: int), _col2 (type: int), _col3 (type: int), _col4 (type: decimal(7,2)), _col5 (type: decimal(7,2))
           TableScan
             alias: customer_address
             filterExpr: ((ca_state = 'TX') and ca_address_sk is not null) (type: boolean)
-            Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+            Statistics: Num rows: 1 Data size: 188 Basic stats: COMPLETE Column stats: NONE
             Filter Operator
               predicate: ((ca_state = 'TX') and ca_address_sk is not null) (type: boolean)
-              Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 188 Basic stats: COMPLETE Column stats: NONE
               Select Operator
                 expressions: ca_address_sk (type: int)
                 outputColumnNames: _col0
-                Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                Statistics: Num rows: 1 Data size: 188 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
                   key expressions: _col0 (type: int)
+                  null sort order: a
                   sort order: +
                   Map-reduce partition columns: _col0 (type: int)
-                  Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                  Statistics: Num rows: 1 Data size: 188 Basic stats: COMPLETE Column stats: NONE
       Map Vectorization:
           enabled: false
           enabledConditionsNotMet: Vectorized map work only works with 1 TableScanOperator IS false
@@ -495,7 +497,7 @@ STAGE PLANS:
             0 _col1 (type: int)
             1 _col0 (type: int)
           outputColumnNames: _col0, _col2, _col3, _col4, _col5
-          Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+          Statistics: Num rows: 1 Data size: 264 Basic stats: COMPLETE Column stats: NONE
           File Output Operator
             compressed: false
             table:
@@ -509,26 +511,28 @@ STAGE PLANS:
           TableScan
             Reduce Output Operator
               key expressions: _col2 (type: int)
+              null sort order: a
               sort order: +
               Map-reduce partition columns: _col2 (type: int)
-              Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 264 Basic stats: COMPLETE Column stats: NONE
               value expressions: _col0 (type: int), _col3 (type: int), _col4 (type: decimal(7,2)), _col5 (type: decimal(7,2))
           TableScan
             alias: web_site
             filterExpr: ((web_company_name = 'pri') and web_site_sk is not null) (type: boolean)
-            Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+            Statistics: Num rows: 1 Data size: 188 Basic stats: COMPLETE Column stats: NONE
             Filter Operator
               predicate: ((web_company_name = 'pri') and web_site_sk is not null) (type: boolean)
-              Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 188 Basic stats: COMPLETE Column stats: NONE
               Select Operator
                 expressions: web_site_sk (type: int)
                 outputColumnNames: _col0
-                Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                Statistics: Num rows: 1 Data size: 188 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
                   key expressions: _col0 (type: int)
+                  null sort order: a
                   sort order: +
                   Map-reduce partition columns: _col0 (type: int)
-                  Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                  Statistics: Num rows: 1 Data size: 188 Basic stats: COMPLETE Column stats: NONE
       Map Vectorization:
           enabled: false
           enabledConditionsNotMet: Vectorized map work only works with 1 TableScanOperator IS false
@@ -544,7 +548,7 @@ STAGE PLANS:
             0 _col2 (type: int)
             1 _col0 (type: int)
           outputColumnNames: _col0, _col3, _col4, _col5
-          Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+          Statistics: Num rows: 1 Data size: 290 Basic stats: COMPLETE Column stats: NONE
           File Output Operator
             compressed: false
             table:
@@ -558,22 +562,18 @@ STAGE PLANS:
           TableScan
             Reduce Output Operator
               key expressions: _col3 (type: int)
+              null sort order: a
               sort order: +
               Map-reduce partition columns: _col3 (type: int)
-              Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 290 Basic stats: COMPLETE Column stats: NONE
               value expressions: _col0 (type: int), _col4 (type: decimal(7,2)), _col5 (type: decimal(7,2))
           TableScan
             Reduce Output Operator
               key expressions: _col0 (type: int)
+              null sort order: a
               sort order: +
               Map-reduce partition columns: _col0 (type: int)
-              Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
-          TableScan
-            Reduce Output Operator
-              key expressions: _col0 (type: int)
-              sort order: +
-              Map-reduce partition columns: _col0 (type: int)
-              Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
       Map Vectorization:
           enabled: false
           enabledConditionsNotMet: Vectorized map work only works with 1 TableScanOperator IS false
@@ -585,13 +585,11 @@ STAGE PLANS:
         Join Operator
           condition map:
                Inner Join 0 to 1
-               Inner Join 0 to 2
           keys:
             0 _col3 (type: int)
             1 _col0 (type: int)
-            2 _col0 (type: int)
           outputColumnNames: _col0, _col3, _col4, _col5
-          Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+          Statistics: Num rows: 1 Data size: 319 Basic stats: COMPLETE Column stats: NONE
           File Output Operator
             compressed: false
             table:
@@ -604,27 +602,70 @@ STAGE PLANS:
       Map Operator Tree:
           TableScan
             Reduce Output Operator
+              key expressions: _col3 (type: int)
+              null sort order: a
+              sort order: +
+              Map-reduce partition columns: _col3 (type: int)
+              Statistics: Num rows: 1 Data size: 319 Basic stats: COMPLETE Column stats: NONE
+              value expressions: _col0 (type: int), _col4 (type: decimal(7,2)), _col5 (type: decimal(7,2))
+          TableScan
+            Reduce Output Operator
               key expressions: _col0 (type: int)
+              null sort order: a
               sort order: +
               Map-reduce partition columns: _col0 (type: int)
-              Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: NONE
+      Map Vectorization:
+          enabled: false
+          enabledConditionsNotMet: Vectorized map work only works with 1 TableScanOperator IS false
+      Reduce Vectorization:
+          enabled: false
+          enableConditionsMet: hive.vectorized.execution.reduce.enabled IS true
+          enableConditionsNotMet: hive.execution.engine mr IN [tez, spark] IS false
+      Reduce Operator Tree:
+        Join Operator
+          condition map:
+               Inner Join 0 to 1
+          keys:
+            0 _col3 (type: int)
+            1 _col0 (type: int)
+          outputColumnNames: _col0, _col3, _col4, _col5
+          Statistics: Num rows: 1 Data size: 350 Basic stats: COMPLETE Column stats: NONE
+          File Output Operator
+            compressed: false
+            table:
+                input format: org.apache.hadoop.mapred.SequenceFileInputFormat
+                output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
+                serde: org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
+
+  Stage: Stage-5
+    Map Reduce
+      Map Operator Tree:
+          TableScan
+            Reduce Output Operator
+              key expressions: _col0 (type: int)
+              null sort order: a
+              sort order: +
+              Map-reduce partition columns: _col0 (type: int)
+              Statistics: Num rows: 1 Data size: 350 Basic stats: COMPLETE Column stats: NONE
               value expressions: _col3 (type: int), _col4 (type: decimal(7,2)), _col5 (type: decimal(7,2))
           TableScan
             alias: date_dim
             filterExpr: (CAST( d_date AS TIMESTAMP) BETWEEN TIMESTAMP'1999-05-01 00:00:00' AND TIMESTAMP'1999-06-30 00:00:00' and d_date_sk is not null) (type: boolean)
-            Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+            Statistics: Num rows: 1 Data size: 188 Basic stats: COMPLETE Column stats: NONE
             Filter Operator
               predicate: (CAST( d_date AS TIMESTAMP) BETWEEN TIMESTAMP'1999-05-01 00:00:00' AND TIMESTAMP'1999-06-30 00:00:00' and d_date_sk is not null) (type: boolean)
-              Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 188 Basic stats: COMPLETE Column stats: NONE
               Select Operator
                 expressions: d_date_sk (type: int)
                 outputColumnNames: _col0
-                Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                Statistics: Num rows: 1 Data size: 188 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
                   key expressions: _col0 (type: int)
+                  null sort order: a
                   sort order: +
                   Map-reduce partition columns: _col0 (type: int)
-                  Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                  Statistics: Num rows: 1 Data size: 188 Basic stats: COMPLETE Column stats: NONE
       Map Vectorization:
           enabled: false
           enabledConditionsNotMet: Vectorized map work only works with 1 TableScanOperator IS false
@@ -640,13 +681,14 @@ STAGE PLANS:
             0 _col0 (type: int)
             1 _col0 (type: int)
           outputColumnNames: _col3, _col4, _col5
-          Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+          Statistics: Num rows: 1 Data size: 385 Basic stats: COMPLETE Column stats: NONE
           Group By Operator
             aggregations: sum(_col4), sum(_col5)
             keys: _col3 (type: int)
+            minReductionHashAggr: 0.99
             mode: hash
             outputColumnNames: _col0, _col2, _col3
-            Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+            Statistics: Num rows: 1 Data size: 385 Basic stats: COMPLETE Column stats: NONE
             File Output Operator
               compressed: false
               table:
@@ -654,7 +696,7 @@ STAGE PLANS:
                   output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
                   serde: org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
 
-  Stage: Stage-5
+  Stage: Stage-6
     Map Reduce
       Map Operator Tree:
           TableScan
@@ -663,6 +705,7 @@ STAGE PLANS:
                 vectorizationSchemaColumns: [0:_col0:int, 1:_col2:decimal(17,2), 2:_col3:decimal(17,2)]
             Reduce Output Operator
               key expressions: _col0 (type: int)
+              null sort order: a
               sort order: +
               Map-reduce partition columns: _col0 (type: int)
               Reduce Sink Vectorization:
@@ -670,7 +713,7 @@ STAGE PLANS:
                   native: false
                   nativeConditionsMet: hive.vectorized.execution.reducesink.new.enabled IS true, No PTF TopN IS true, No DISTINCT columns IS true, BinarySortableSerDe for keys IS true, LazyBinarySerDe for values IS true
                   nativeConditionsNotMet: hive.execution.engine mr IN [tez, spark] IS false
-              Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 385 Basic stats: COMPLETE Column stats: NONE
               value expressions: _col2 (type: decimal(17,2)), _col3 (type: decimal(17,2))
       Execution mode: vectorized
       Map Vectorization:
@@ -698,12 +741,12 @@ STAGE PLANS:
           keys: KEY._col0 (type: int)
           mode: partial2
           outputColumnNames: _col0, _col1, _col2
-          Statistics: Num rows: 2 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+          Statistics: Num rows: 1 Data size: 385 Basic stats: COMPLETE Column stats: NONE
           Group By Operator
             aggregations: count(_col0), sum(_col1), sum(_col2)
             mode: partial2
             outputColumnNames: _col0, _col1, _col2
-            Statistics: Num rows: 1 Data size: 344 Basic stats: PARTIAL Column stats: NONE
+            Statistics: Num rows: 1 Data size: 344 Basic stats: COMPLETE Column stats: NONE
             File Output Operator
               compressed: false
               table:
@@ -711,7 +754,7 @@ STAGE PLANS:
                   output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
                   serde: org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
 
-  Stage: Stage-6
+  Stage: Stage-7
     Map Reduce
       Map Operator Tree:
           TableScan
@@ -719,13 +762,14 @@ STAGE PLANS:
                 native: true
                 vectorizationSchemaColumns: [0:_col0:bigint, 1:_col1:decimal(17,2), 2:_col2:decimal(17,2)]
             Reduce Output Operator
+              null sort order: 
               sort order: 
               Reduce Sink Vectorization:
                   className: VectorReduceSinkOperator
                   native: false
                   nativeConditionsMet: hive.vectorized.execution.reducesink.new.enabled IS true, No PTF TopN IS true, No DISTINCT columns IS true, BinarySortableSerDe for keys IS true, LazyBinarySerDe for values IS true
                   nativeConditionsNotMet: hive.execution.engine mr IN [tez, spark] IS false
-              Statistics: Num rows: 1 Data size: 344 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 344 Basic stats: COMPLETE Column stats: NONE
               value expressions: _col0 (type: bigint), _col1 (type: decimal(17,2)), _col2 (type: decimal(17,2))
       Execution mode: vectorized
       Map Vectorization:
@@ -752,71 +796,14 @@ STAGE PLANS:
           aggregations: count(VALUE._col0), sum(VALUE._col1), sum(VALUE._col2)
           mode: mergepartial
           outputColumnNames: _col0, _col1, _col2
-          Statistics: Num rows: 1 Data size: 344 Basic stats: PARTIAL Column stats: NONE
-          Select Operator
-            expressions: _col1 (type: decimal(17,2)), _col2 (type: decimal(17,2)), _col0 (type: bigint)
-            outputColumnNames: _col1, _col2, _col3
-            Statistics: Num rows: 1 Data size: 344 Basic stats: PARTIAL Column stats: NONE
-            File Output Operator
-              compressed: false
-              table:
-                  input format: org.apache.hadoop.mapred.SequenceFileInputFormat
-                  output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
-                  serde: org.apache.hadoop.hive.serde2.lazybinary.LazyBinarySerDe
-
-  Stage: Stage-7
-    Map Reduce
-      Map Operator Tree:
-          TableScan
-            TableScan Vectorization:
-                native: true
-                vectorizationSchemaColumns: [0:_col1:decimal(17,2), 1:_col2:decimal(17,2), 2:_col3:bigint]
-            Reduce Output Operator
-              key expressions: _col3 (type: bigint)
-              sort order: +
-              Reduce Sink Vectorization:
-                  className: VectorReduceSinkOperator
-                  native: false
-                  nativeConditionsMet: hive.vectorized.execution.reducesink.new.enabled IS true, No PTF TopN IS true, No DISTINCT columns IS true, BinarySortableSerDe for keys IS true, LazyBinarySerDe for values IS true
-                  nativeConditionsNotMet: hive.execution.engine mr IN [tez, spark] IS false
-              Statistics: Num rows: 1 Data size: 344 Basic stats: PARTIAL Column stats: NONE
-              TopN Hash Memory Usage: 0.1
-              value expressions: _col1 (type: decimal(17,2)), _col2 (type: decimal(17,2))
-      Execution mode: vectorized
-      Map Vectorization:
-          enabled: true
-          enabledConditionsMet: hive.vectorized.use.vector.serde.deserialize IS true
-          inputFormatFeatureSupport: []
-          featureSupportInUse: []
-          inputFileFormats: org.apache.hadoop.mapred.SequenceFileInputFormat
-          allNative: false
-          usesVectorUDFAdaptor: false
-          vectorized: true
-          rowBatchContext:
-              dataColumnCount: 3
-              includeColumns: [0, 1, 2]
-              dataColumns: _col1:decimal(17,2), _col2:decimal(17,2), _col3:bigint
-              partitionColumnCount: 0
-              scratchColumnTypeNames: []
-      Reduce Vectorization:
-          enabled: false
-          enableConditionsMet: hive.vectorized.execution.reduce.enabled IS true
-          enableConditionsNotMet: hive.execution.engine mr IN [tez, spark] IS false
-      Reduce Operator Tree:
-        Select Operator
-          expressions: KEY.reducesinkkey0 (type: bigint), VALUE._col0 (type: decimal(17,2)), VALUE._col1 (type: decimal(17,2))
-          outputColumnNames: _col0, _col1, _col2
-          Statistics: Num rows: 1 Data size: 344 Basic stats: PARTIAL Column stats: NONE
-          Limit
-            Number of rows: 100
-            Statistics: Num rows: 1 Data size: 344 Basic stats: PARTIAL Column stats: NONE
-            File Output Operator
-              compressed: false
-              Statistics: Num rows: 1 Data size: 344 Basic stats: PARTIAL Column stats: NONE
-              table:
-                  input format: org.apache.hadoop.mapred.SequenceFileInputFormat
-                  output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
-                  serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
+          Statistics: Num rows: 1 Data size: 344 Basic stats: COMPLETE Column stats: NONE
+          File Output Operator
+            compressed: false
+            Statistics: Num rows: 1 Data size: 344 Basic stats: COMPLETE Column stats: NONE
+            table:
+                input format: org.apache.hadoop.mapred.SequenceFileInputFormat
+                output format: org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat
+                serde: org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe
 
   Stage: Stage-10
     Map Reduce
@@ -824,36 +811,38 @@ STAGE PLANS:
           TableScan
             alias: ws1
             filterExpr: ws_order_number is not null (type: boolean)
-            Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+            Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
             Filter Operator
               predicate: ws_order_number is not null (type: boolean)
-              Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
               Select Operator
                 expressions: ws_warehouse_sk (type: int), ws_order_number (type: int)
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
                   key expressions: _col1 (type: int)
+                  null sort order: a
                   sort order: +
                   Map-reduce partition columns: _col1 (type: int)
-                  Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                  Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
                   value expressions: _col0 (type: int)
           TableScan
             alias: ws2
             filterExpr: ws_order_number is not null (type: boolean)
-            Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+            Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
             Filter Operator
               predicate: ws_order_number is not null (type: boolean)
-              Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
               Select Operator
                 expressions: ws_warehouse_sk (type: int), ws_order_number (type: int)
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
                   key expressions: _col1 (type: int)
+                  null sort order: a
                   sort order: +
                   Map-reduce partition columns: _col1 (type: int)
-                  Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                  Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
                   value expressions: _col0 (type: int)
       Map Vectorization:
           enabled: false
@@ -870,19 +859,20 @@ STAGE PLANS:
             0 _col1 (type: int)
             1 _col1 (type: int)
           outputColumnNames: _col0, _col1, _col2
-          Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+          Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
           Filter Operator
             predicate: (_col0 <> _col2) (type: boolean)
-            Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+            Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
             Select Operator
               expressions: _col1 (type: int)
               outputColumnNames: _col1
-              Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
               Group By Operator
                 keys: _col1 (type: int)
+                minReductionHashAggr: 0.99
                 mode: hash
                 outputColumnNames: _col0
-                Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
                 File Output Operator
                   compressed: false
                   table:
@@ -899,6 +889,7 @@ STAGE PLANS:
                 vectorizationSchemaColumns: [0:_col0:int]
             Reduce Output Operator
               key expressions: _col0 (type: int)
+              null sort order: a
               sort order: +
               Map-reduce partition columns: _col0 (type: int)
               Reduce Sink Vectorization:
@@ -906,7 +897,7 @@ STAGE PLANS:
                   native: false
                   nativeConditionsMet: hive.vectorized.execution.reducesink.new.enabled IS true, No PTF TopN IS true, No DISTINCT columns IS true, BinarySortableSerDe for keys IS true, LazyBinarySerDe for values IS true
                   nativeConditionsNotMet: hive.execution.engine mr IN [tez, spark] IS false
-              Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
       Execution mode: vectorized
       Map Vectorization:
           enabled: true
@@ -932,7 +923,7 @@ STAGE PLANS:
           keys: KEY._col0 (type: int)
           mode: mergepartial
           outputColumnNames: _col0
-          Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+          Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
           File Output Operator
             compressed: false
             table:
@@ -946,36 +937,38 @@ STAGE PLANS:
           TableScan
             alias: ws1
             filterExpr: ws_order_number is not null (type: boolean)
-            Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+            Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
             Filter Operator
               predicate: ws_order_number is not null (type: boolean)
-              Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
               Select Operator
                 expressions: ws_warehouse_sk (type: int), ws_order_number (type: int)
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
                   key expressions: _col1 (type: int)
+                  null sort order: a
                   sort order: +
                   Map-reduce partition columns: _col1 (type: int)
-                  Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                  Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
                   value expressions: _col0 (type: int)
           TableScan
             alias: ws2
             filterExpr: ws_order_number is not null (type: boolean)
-            Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+            Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
             Filter Operator
               predicate: ws_order_number is not null (type: boolean)
-              Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
               Select Operator
                 expressions: ws_warehouse_sk (type: int), ws_order_number (type: int)
                 outputColumnNames: _col0, _col1
-                Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
                   key expressions: _col1 (type: int)
+                  null sort order: a
                   sort order: +
                   Map-reduce partition columns: _col1 (type: int)
-                  Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                  Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
                   value expressions: _col0 (type: int)
       Map Vectorization:
           enabled: false
@@ -992,14 +985,14 @@ STAGE PLANS:
             0 _col1 (type: int)
             1 _col1 (type: int)
           outputColumnNames: _col0, _col1, _col2
-          Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+          Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
           Filter Operator
             predicate: (_col0 <> _col2) (type: boolean)
-            Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+            Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
             Select Operator
               expressions: _col1 (type: int)
               outputColumnNames: _col0
-              Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
               File Output Operator
                 compressed: false
                 table:
@@ -1013,25 +1006,27 @@ STAGE PLANS:
           TableScan
             alias: web_returns
             filterExpr: wr_order_number is not null (type: boolean)
-            Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+            Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: NONE
             Filter Operator
               predicate: wr_order_number is not null (type: boolean)
-              Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: NONE
               Select Operator
                 expressions: wr_order_number (type: int)
                 outputColumnNames: _col13
-                Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: NONE
                 Reduce Output Operator
                   key expressions: _col13 (type: int)
+                  null sort order: a
                   sort order: +
                   Map-reduce partition columns: _col13 (type: int)
-                  Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+                  Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: NONE
           TableScan
             Reduce Output Operator
               key expressions: _col0 (type: int)
+              null sort order: a
               sort order: +
               Map-reduce partition columns: _col0 (type: int)
-              Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 8 Basic stats: COMPLETE Column stats: NONE
       Map Vectorization:
           enabled: false
           enabledConditionsNotMet: Vectorized map work only works with 1 TableScanOperator IS false
@@ -1047,12 +1042,13 @@ STAGE PLANS:
             0 _col13 (type: int)
             1 _col0 (type: int)
           outputColumnNames: _col13
-          Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+          Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: NONE
           Group By Operator
             keys: _col13 (type: int)
+            minReductionHashAggr: 0.99
             mode: hash
             outputColumnNames: _col0
-            Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+            Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: NONE
             File Output Operator
               compressed: false
               table:
@@ -1069,6 +1065,7 @@ STAGE PLANS:
                 vectorizationSchemaColumns: [0:_col0:int]
             Reduce Output Operator
               key expressions: _col0 (type: int)
+              null sort order: a
               sort order: +
               Map-reduce partition columns: _col0 (type: int)
               Reduce Sink Vectorization:
@@ -1076,7 +1073,7 @@ STAGE PLANS:
                   native: false
                   nativeConditionsMet: hive.vectorized.execution.reducesink.new.enabled IS true, No PTF TopN IS true, No DISTINCT columns IS true, BinarySortableSerDe for keys IS true, LazyBinarySerDe for values IS true
                   nativeConditionsNotMet: hive.execution.engine mr IN [tez, spark] IS false
-              Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+              Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: NONE
       Execution mode: vectorized
       Map Vectorization:
           enabled: true
@@ -1102,7 +1099,7 @@ STAGE PLANS:
           keys: KEY._col0 (type: int)
           mode: mergepartial
           outputColumnNames: _col0
-          Statistics: Num rows: 1 Data size: 0 Basic stats: PARTIAL Column stats: NONE
+          Statistics: Num rows: 1 Data size: 4 Basic stats: COMPLETE Column stats: NONE
           File Output Operator
             compressed: false
             table:

@@ -30,10 +30,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import org.apache.hadoop.hive.metastore.tools.HiveSchemaHelper;
-import org.apache.hadoop.hive.metastore.tools.HiveSchemaHelper.MetaStoreConnectionInfo;
-
 import com.google.common.collect.ImmutableMap;
+
+import org.apache.hadoop.hive.metastore.tools.schematool.HiveSchemaHelper;
+import org.apache.hadoop.hive.metastore.tools.schematool.HiveSchemaHelper.MetaStoreConnectionInfo;
 import org.apache.hadoop.hive.metastore.utils.MetastoreVersionInfo;
 
 
@@ -142,10 +142,10 @@ public class MetaStoreSchemaInfo implements IMetaStoreSchemaInfo {
   @Override
   public String getCreateUserScript() throws HiveMetaException {
     String createScript = CREATE_USER_PREFIX + "." + dbType + SQL_FILE_EXTENSION;
+    File scriptFile = new File(getMetaStoreScriptDir() + File.separatorChar + createScript);
     // check if the file exists
-    if (!(new File(getMetaStoreScriptDir() + File.separatorChar +
-        createScript).exists())) {
-      throw new HiveMetaException("Unable to find create user file, expected: " + createScript);
+    if (!scriptFile.exists()) {
+      throw new HiveMetaException("Unable to find create user file, expected: " + scriptFile.getAbsolutePath());
     }
     return createScript;
   }

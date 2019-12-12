@@ -224,8 +224,9 @@ function
         (STAR) => (star=STAR)
         | (dist=KW_DISTINCT | KW_ALL)? (selectExpression (COMMA selectExpression)*)?
       )
-    RPAREN (KW_OVER ws=window_specification)?
+    RPAREN ((KW_OVER ws=window_specification) | (within=KW_WITHIN KW_GROUP LPAREN ordBy=orderByClause RPAREN))?
            -> {$star != null}? ^(TOK_FUNCTIONSTAR functionName $ws?)
+           -> {$within != null}? ^(TOK_FUNCTION functionName (selectExpression+)? ^(TOK_WITHIN_GROUP $ordBy))
            -> {$dist == null}? ^(TOK_FUNCTION functionName (selectExpression+)? $ws?)
                             -> ^(TOK_FUNCTIONDI functionName (selectExpression+)? $ws?)
     ;
@@ -247,8 +248,18 @@ castExpression
     LPAREN
           expression
           KW_AS
-          primitiveType
-    RPAREN -> ^(TOK_FUNCTION primitiveType expression)
+          toType=primitiveType
+          (fmt=KW_FORMAT StringLiteral)?
+    RPAREN
+    // simple cast
+    -> {$fmt == null}? ^(TOK_FUNCTION $toType expression)
+
+    // plain cast ... format: toType is int representing a TOK_* in HiveParser_IdentifiersParser, expression, format pattern
+    -> {((CommonTree)toType.getTree()).getChild(0) == null}?
+       ^(TOK_FUNCTION {adaptor.create(Identifier, "cast_format")} NumberLiteral[Integer.toString(((CommonTree)toType.getTree()).token.getType())] expression StringLiteral)
+
+    // cast ... format to type with 4th parameter which is length of CHAR or VARCHAR
+    -> ^(TOK_FUNCTION {adaptor.create(Identifier, "cast_format")} NumberLiteral[Integer.toString(((CommonTree)toType.getTree()).token.getType())] expression StringLiteral NumberLiteral[((CommonTree)toType.getTree()).getChild(0).getText()])
     ;
 
 caseExpression
@@ -589,6 +600,23 @@ precedenceSimilarExpressionAtom[CommonTree t]
     |
     KW_LIKE KW_ALL (expr=expressionsInParenthesis[false, false])
     -> ^(TOK_FUNCTION Identifier["likeall"] {$t} {$expr.tree})
+    |
+    precedenceSimilarExpressionQuantifierPredicate[$t]
+    ;
+
+precedenceSimilarExpressionQuantifierPredicate[CommonTree t]
+    :
+    dropPartitionOperator quantifierType subQueryExpression
+    -> ^(TOK_SUBQUERY_EXPR ^(TOK_SUBQUERY_OP quantifierType dropPartitionOperator ) subQueryExpression {$t})
+    ;
+
+quantifierType
+    :
+    KW_ANY -> KW_SOME
+    |
+    KW_SOME -> KW_SOME
+    |
+    KW_ALL -> KW_ALL
     ;
 
 precedenceSimilarExpressionIn[CommonTree t]
@@ -665,7 +693,7 @@ precedenceOrExpression
 
 booleanValue
     :
-    KW_TRUE^ | KW_FALSE^ | KW_UNKNOWN^
+    KW_TRUE^ | KW_FALSE^
     ;
 
 booleanValueTok
@@ -795,12 +823,12 @@ nonReserved
     :
     KW_ABORT | KW_ADD | KW_ADMIN | KW_AFTER | KW_ANALYZE | KW_ARCHIVE | KW_ASC | KW_BEFORE | KW_BUCKET | KW_BUCKETS
     | KW_CASCADE | KW_CBO | KW_CHANGE | KW_CHECK | KW_CLUSTER | KW_CLUSTERED | KW_CLUSTERSTATUS | KW_COLLECTION | KW_COLUMNS
-    | KW_COMMENT | KW_COMPACT | KW_COMPACTIONS | KW_COMPUTE | KW_CONCATENATE | KW_CONTINUE | KW_DATA | KW_DAY
+    | KW_COMMENT | KW_COMPACT | KW_COMPACTIONS | KW_COMPUTE | KW_CONCATENATE | KW_CONTINUE | KW_COST | KW_DATA | KW_DAY
     | KW_DATABASES | KW_DATETIME | KW_DBPROPERTIES | KW_DEFERRED | KW_DEFINED | KW_DELIMITED | KW_DEPENDENCY 
-    | KW_DESC | KW_DIRECTORIES | KW_DIRECTORY | KW_DISABLE | KW_DISTRIBUTE | KW_DOW | KW_ELEM_TYPE 
+    | KW_DESC | KW_DIRECTORIES | KW_DIRECTORY | KW_DISABLE | KW_DISTRIBUTE | KW_DISTRIBUTED | KW_DOW | KW_ELEM_TYPE
     | KW_ENABLE | KW_ENFORCED | KW_ESCAPED | KW_EXCLUSIVE | KW_EXPLAIN | KW_EXPORT | KW_FIELDS | KW_FILE | KW_FILEFORMAT
     | KW_FIRST | KW_FORMAT | KW_FORMATTED | KW_FUNCTIONS | KW_HOLD_DDLTIME | KW_HOUR | KW_IDXPROPERTIES | KW_IGNORE
-    | KW_INDEX | KW_INDEXES | KW_INPATH | KW_INPUTDRIVER | KW_INPUTFORMAT | KW_ITEMS | KW_JAR | KW_KILL
+    | KW_INDEX | KW_INDEXES | KW_INPATH | KW_INPUTDRIVER | KW_INPUTFORMAT | KW_ITEMS | KW_JAR | KW_JOINCOST | KW_KILL
     | KW_KEYS | KW_KEY_TYPE | KW_LAST | KW_LIMIT | KW_OFFSET | KW_LINES | KW_LOAD | KW_LOCATION | KW_LOCK | KW_LOCKS | KW_LOGICAL | KW_LONG
     | KW_MAPJOIN | KW_MATERIALIZED | KW_METADATA | KW_MINUTE | KW_MONTH | KW_MSCK | KW_NOSCAN | KW_NO_DROP | KW_NULLS | KW_OFFLINE
     | KW_OPTION | KW_OUTPUTDRIVER | KW_OUTPUTFORMAT | KW_OVERWRITE | KW_OWNER | KW_PARTITIONED | KW_PARTITIONS | KW_PLUS
@@ -837,10 +865,11 @@ nonReserved
     | KW_TIMESTAMPTZ
     | KW_DEFAULT
     | KW_REOPTIMIZATION
+    | KW_EXECUTED | KW_SCHEDULED | KW_CRON
     | KW_RESOURCE | KW_PLAN | KW_PLANS | KW_QUERY_PARALLELISM | KW_ACTIVATE | KW_MOVE | KW_DO
     | KW_POOL | KW_ALLOC_FRACTION | KW_SCHEDULING_POLICY | KW_PATH | KW_MAPPING | KW_WORKLOAD | KW_MANAGEMENT | KW_ACTIVE | KW_UNMANAGED
     | KW_UNKNOWN
-
+    | KW_WITHIN
 ;
 
 //The following SQL2011 reserved keywords are used as function name only, but not as identifiers.

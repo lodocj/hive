@@ -21,6 +21,7 @@ package org.apache.hive.hcatalog.listener;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.fail;
 
 import java.util.concurrent.TimeUnit;
@@ -271,9 +272,9 @@ public class TestDbNotificationListener {
     conf.setVar(HiveConf.ConfVars.METASTORE_EVENT_DB_LISTENER_TTL, String.valueOf(EVENTS_TTL) + "s");
     conf.setBoolVar(HiveConf.ConfVars.HIVE_SUPPORT_CONCURRENCY, false);
     conf.setBoolVar(HiveConf.ConfVars.FIRE_EVENTS_FOR_DML, true);
-    conf.setVar(HiveConf.ConfVars.DYNAMICPARTITIONINGMODE, "nonstrict");
     conf.setVar(HiveConf.ConfVars.METASTORE_RAW_STORE_IMPL, DummyRawStoreFailEvent.class.getName());
     MetastoreConf.setTimeVar(conf, MetastoreConf.ConfVars.EVENT_DB_LISTENER_CLEAN_INTERVAL, CLEANUP_SLEEP_TIME, TimeUnit.SECONDS);
+    MetastoreConf.setVar(conf, MetastoreConf.ConfVars.EVENT_MESSAGE_FACTORY, JSONMessageEncoder.class.getName());
     conf.setVar(HiveConf.ConfVars.HIVE_AUTHORIZATION_MANAGER,
         "org.apache.hadoop.hive.ql.security.authorization.plugin.sqlstd.SQLStdHiveAuthorizerFactory");
     SessionState.start(new CliSessionState(conf));
@@ -404,8 +405,11 @@ public class TestDbNotificationListener {
     String dbName2 = "dropdb2";
     String dbLocationUri = testTempDir;
     String dbDescription = "no description";
-    Database db = new Database(dbName, dbDescription, dbLocationUri, emptyParameters);
-    msClient.createDatabase(db);
+    msClient.createDatabase(new Database(dbName, dbDescription, dbLocationUri, emptyParameters));
+
+    // Get the DB for comparison below since it may include additional parameters
+    Database db = msClient.getDatabase(dbName);
+    // Drop the database
     msClient.dropDatabase(dbName);
 
     // Read notification from metastore
@@ -426,6 +430,7 @@ public class TestDbNotificationListener {
     // Parse the message field
     DropDatabaseMessage dropDbMsg = md.getDropDatabaseMessage(event.getMessage());
     assertEquals(dbName, dropDbMsg.getDB());
+    assertEquals(db, dropDbMsg.getDatabaseObject());
 
     // Verify the eventID was passed to the non-transactional listener
     MockMetaStoreEventListener.popAndVerifyLastEventId(EventType.DROP_DATABASE, firstEventId + 2);
@@ -433,8 +438,7 @@ public class TestDbNotificationListener {
 
     // When hive.metastore.transactional.event.listeners is set,
     // a failed event should not create a new notification
-    db = new Database(dbName2, dbDescription, dbLocationUri, emptyParameters);
-    msClient.createDatabase(db);
+    msClient.createDatabase(new Database(dbName2, dbDescription, dbLocationUri, emptyParameters));
     DummyRawStoreFailEvent.setEventSucceed(false);
     try {
       msClient.dropDatabase(dbName2);
@@ -1079,6 +1083,7 @@ public class TestDbNotificationListener {
     data.setInsertData(insertData);
     insertData.addToFilesAdded(fileAdded);
     insertData.addToFilesAddedChecksum(checksumAdded);
+    insertData.setReplace(false);
     FireEventRequest rqst = new FireEventRequest(true, data);
     rqst.setDbName(defaultDbName);
     rqst.setTableName(tblName);
@@ -1102,6 +1107,7 @@ public class TestDbNotificationListener {
     assertEquals(defaultDbName, insertMessage.getDB());
     assertEquals(tblName, insertMessage.getTable());
     assertEquals(TableType.MANAGED_TABLE.toString(), insertMessage.getTableType());
+    assertFalse(insertMessage.isReplace());
 
     // Verify the eventID was passed to the non-transactional listener
     MockMetaStoreEventListener.popAndVerifyLastEventId(EventType.INSERT, firstEventId + 2);
@@ -1146,6 +1152,7 @@ public class TestDbNotificationListener {
     data.setInsertData(insertData);
     insertData.addToFilesAdded(fileAdded);
     insertData.addToFilesAddedChecksum(checksumAdded);
+    insertData.setReplace(false);
     FireEventRequest rqst = new FireEventRequest(true, data);
     rqst.setDbName(defaultDbName);
     rqst.setTableName(tblName);
@@ -1166,7 +1173,7 @@ public class TestDbNotificationListener {
     verifyInsert(event, defaultDbName, tblName);
     InsertMessage insertMessage = md.getInsertMessage(event.getMessage());
     List<String> ptnValues = insertMessage.getPtnObj().getValues();
-
+    assertFalse(insertMessage.isReplace());
     assertEquals(partKeyVals, ptnValues);
 
     // Verify the eventID was passed to the non-transactional listener
@@ -1250,7 +1257,7 @@ public class TestDbNotificationListener {
 
     // Get notifications from metastore
     NotificationEventResponse rsp = msClient.getNextNotification(firstEventId, 0, null);
-    assertEquals(6, rsp.getEventsSize());
+    assertEquals(7, rsp.getEventsSize());
     NotificationEvent event = rsp.getEvents().get(0);
     assertEquals(firstEventId + 1, event.getEventId());
     assertEquals(EventType.CREATE_TABLE.toString(), event.getEventType());
@@ -1260,15 +1267,17 @@ public class TestDbNotificationListener {
     assertEquals(EventType.INSERT.toString(), event.getEventType());
     // Parse the message field
     verifyInsert(event, defaultDbName, tblName);
-
-    event = rsp.getEvents().get(4);
-    assertEquals(firstEventId + 5, event.getEventId());
-    assertEquals(EventType.ALTER_TABLE.toString(), event.getEventType());
+    InsertMessage insertMsg = md.getInsertMessage(event.getMessage());
+    assertFalse(insertMsg.isReplace());
 
     event = rsp.getEvents().get(5);
     assertEquals(firstEventId + 6, event.getEventId());
+    assertEquals(EventType.ALTER_TABLE.toString(), event.getEventType());
+
+    event = rsp.getEvents().get(6);
+    assertEquals(firstEventId + 7, event.getEventId());
     assertEquals(EventType.DROP_TABLE.toString(), event.getEventType());
-    testEventCounts(defaultDbName, firstEventId, null, null, 6);
+    testEventCounts(defaultDbName, firstEventId, null, null, 7);
   }
 
   @Test
@@ -1280,12 +1289,12 @@ public class TestDbNotificationListener {
     driver.run("create table " + sourceTblName + " (c int)");
     // Event 2 (alter: marker stats event), 3 (insert), 4 (alter: stats update event)
     driver.run("insert into table " + sourceTblName + " values (1)");
-    // Event 5, 6 (alter: stats update event)
+    // Event 5, 6 (alter), 7 (alter: stats update event)
     driver.run("create table " + targetTblName + " as select c from " + sourceTblName);
 
     // Get notifications from metastore
     NotificationEventResponse rsp = msClient.getNextNotification(firstEventId, 0, null);
-    assertEquals(6, rsp.getEventsSize());
+    assertEquals(8, rsp.getEventsSize());
     NotificationEvent event = rsp.getEvents().get(0);
     assertEquals(firstEventId + 1, event.getEventId());
     assertEquals(EventType.CREATE_TABLE.toString(), event.getEventType());
@@ -1296,10 +1305,10 @@ public class TestDbNotificationListener {
     // Parse the message field
     verifyInsert(event, null, sourceTblName);
 
-    event = rsp.getEvents().get(4);
-    assertEquals(firstEventId + 5, event.getEventId());
+    event = rsp.getEvents().get(5);
+    assertEquals(firstEventId + 6, event.getEventId());
     assertEquals(EventType.CREATE_TABLE.toString(), event.getEventType());
-    testEventCounts(defaultDbName, firstEventId, null, null, 6);
+    testEventCounts(defaultDbName, firstEventId, null, null, 8);
   }
 
   @Test
@@ -1349,11 +1358,11 @@ public class TestDbNotificationListener {
     // Event 9, 10
     driver.run("alter table " + tblName + " add partition (ds = 'yesterday')");
 
-    testEventCounts(defaultDbName, firstEventId, null, null, 10);
+    testEventCounts(defaultDbName, firstEventId, null, null, 13);
     // Test a limit higher than available events
-    testEventCounts(defaultDbName, firstEventId, null, 100, 10);
+    testEventCounts(defaultDbName, firstEventId, null, 100, 13);
     // Test toEventId lower than current eventId
-    testEventCounts(defaultDbName, firstEventId, (long) firstEventId + 5, null, 5);
+    testEventCounts(defaultDbName, firstEventId, firstEventId + 5, null, 5);
 
     // Event 10, 11, 12
     driver.run("insert into table " + tblName + " partition (ds = 'yesterday') values (2)");
@@ -1371,32 +1380,33 @@ public class TestDbNotificationListener {
 
     // Get notifications from metastore
     NotificationEventResponse rsp = msClient.getNextNotification(firstEventId, 0, null);
-    assertEquals(24, rsp.getEventsSize());
+    assertEquals(31, rsp.getEventsSize());
+
     NotificationEvent event = rsp.getEvents().get(1);
     assertEquals(firstEventId + 2, event.getEventId());
     assertEquals(EventType.ADD_PARTITION.toString(), event.getEventType());
 
     event = rsp.getEvents().get(3);
     assertEquals(firstEventId + 4, event.getEventId());
+    assertEquals(EventType.UPDATE_PARTITION_COLUMN_STAT.toString(), event.getEventType());
+
+    event = rsp.getEvents().get(4);
+    assertEquals(firstEventId + 5, event.getEventId());
+    assertEquals(EventType.INSERT.toString(), event.getEventType());
+    // Parse the message field
+    verifyInsert(event, null, tblName);
+    // Verify the replace flag.
+    InsertMessage insertMsg = md.getInsertMessage(event.getMessage());
+    assertFalse(insertMsg.isReplace());
+    event = rsp.getEvents().get(8);
+    assertEquals(firstEventId + 9, event.getEventId());
     assertEquals(EventType.INSERT.toString(), event.getEventType());
     // Parse the message field
     verifyInsert(event, null, tblName);
 
-    event = rsp.getEvents().get(6);
-    assertEquals(firstEventId + 7, event.getEventId());
-    assertEquals(EventType.INSERT.toString(), event.getEventType());
-    // Parse the message field
-    verifyInsert(event, null, tblName);
-
-    event = rsp.getEvents().get(9);
-    assertEquals(firstEventId + 10, event.getEventId());
+    event = rsp.getEvents().get(12);
+    assertEquals(firstEventId + 13, event.getEventId());
     assertEquals(EventType.ADD_PARTITION.toString(), event.getEventType());
-
-    event = rsp.getEvents().get(10);
-    assertEquals(firstEventId + 11, event.getEventId());
-    assertEquals(EventType.INSERT.toString(), event.getEventType());
-    // Parse the message field
-    verifyInsert(event, null, tblName);
 
     event = rsp.getEvents().get(13);
     assertEquals(firstEventId + 14, event.getEventId());
@@ -1404,51 +1414,61 @@ public class TestDbNotificationListener {
     // Parse the message field
     verifyInsert(event, null, tblName);
 
-    event = rsp.getEvents().get(16);
-    assertEquals(firstEventId + 17, event.getEventId());
+    event = rsp.getEvents().get(17);
+    assertEquals(firstEventId + 18, event.getEventId());
+    assertEquals(EventType.INSERT.toString(), event.getEventType());
+    // Parse the message field
+    verifyInsert(event, null, tblName);
+
+    event = rsp.getEvents().get(21);
+    assertEquals(firstEventId + 22, event.getEventId());
     assertEquals(EventType.ADD_PARTITION.toString(), event.getEventType());
 
-    event = rsp.getEvents().get(18);
-    assertEquals(firstEventId + 19, event.getEventId());
+    event = rsp.getEvents().get(24);
+    assertEquals(firstEventId + 25, event.getEventId());
     assertEquals(EventType.DROP_PARTITION.toString(), event.getEventType());
 
-    event = rsp.getEvents().get(19);
-    assertEquals(firstEventId + 20, event.getEventId());
+    event = rsp.getEvents().get(25);
+    assertEquals(firstEventId + 26, event.getEventId());
     assertEquals(EventType.ADD_PARTITION.toString(), event.getEventType());
 
-    event = rsp.getEvents().get(20);
-    assertEquals(firstEventId + 21, event.getEventId());
+    event = rsp.getEvents().get(26);
+    assertEquals(firstEventId + 27, event.getEventId());
     assertEquals(EventType.ALTER_PARTITION.toString(), event.getEventType());
     assertTrue(event.getMessage().matches(".*\"ds\":\"todaytwo\".*"));
 
     // Test fromEventId different from the very first
-    testEventCounts(defaultDbName, event.getEventId(), null, null, 3);
+    testEventCounts(defaultDbName, event.getEventId(), null, null, 4);
 
-    event = rsp.getEvents().get(21);
-    assertEquals(firstEventId + 22, event.getEventId());
+    event = rsp.getEvents().get(28);
+    assertEquals(firstEventId + 29, event.getEventId());
     assertEquals(EventType.INSERT.toString(), event.getEventType());
+    // Verify the replace flag.
+    insertMsg = md.getInsertMessage(event.getMessage());
+    assertTrue(insertMsg.isReplace());
     // replace-overwrite introduces no new files
-    assertTrue(event.getMessage().matches(".*\"files\":\\[\\].*"));
+    // the insert overwrite creates an empty file with the current change
+    //assertTrue(event.getMessage().matches(".*\"files\":\\[\\].*"));
 
-    event = rsp.getEvents().get(22);
-    assertEquals(firstEventId + 23, event.getEventId());
+    event = rsp.getEvents().get(29);
+    assertEquals(firstEventId + 30, event.getEventId());
     assertEquals(EventType.ALTER_PARTITION.toString(), event.getEventType());
     assertTrue(event.getMessage().matches(".*\"ds\":\"todaytwo\".*"));
 
-    event = rsp.getEvents().get(23);
-    assertEquals(firstEventId + 24, event.getEventId());
+    event = rsp.getEvents().get(30);
+    assertEquals(firstEventId + 31, event.getEventId());
     assertEquals(EventType.ALTER_PARTITION.toString(), event.getEventType());
     assertTrue(event.getMessage().matches(".*\"ds\":\"todaytwo\".*"));
-    testEventCounts(defaultDbName, firstEventId, null, null, 24);
+    testEventCounts(defaultDbName, firstEventId, null, null, 31);
 
     // Test a limit within the available events
     testEventCounts(defaultDbName, firstEventId, null, 10, 10);
     // Test toEventId greater than current eventId
-    testEventCounts(defaultDbName, firstEventId, (long) firstEventId + 100, null, 24);
+    testEventCounts(defaultDbName, firstEventId, firstEventId + 100, null, 31);
     // Test toEventId greater than current eventId with some limit within available events
-    testEventCounts(defaultDbName, firstEventId, (long) firstEventId + 100, 10, 10);
+    testEventCounts(defaultDbName, firstEventId, firstEventId + 100, 10, 10);
     // Test toEventId greater than current eventId with some limit beyond available events
-    testEventCounts(defaultDbName, firstEventId, (long) firstEventId + 100, 50, 24);
+    testEventCounts(defaultDbName, firstEventId, firstEventId + 100, 50, 31);
   }
 
   private void verifyInsert(NotificationEvent event, String dbName, String tblName) throws Exception {

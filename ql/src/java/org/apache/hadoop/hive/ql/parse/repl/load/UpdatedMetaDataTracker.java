@@ -71,10 +71,19 @@ public class UpdatedMetaDataTracker {
 
   private List<UpdateMetaData> updateMetaDataList;
   private Map<String, Integer> updateMetaDataMap;
+  private boolean needCommitTxn = false;
 
   public UpdatedMetaDataTracker() {
     updateMetaDataList = new ArrayList<>();
     updateMetaDataMap = new HashMap<>();
+  }
+
+  public void setNeedCommitTxn(boolean needCommitTxn) {
+    this.needCommitTxn = needCommitTxn;
+  }
+
+  public boolean isNeedCommitTxn() {
+    return needCommitTxn;
   }
 
   public void copyUpdatedMetadata(UpdatedMetaDataTracker other) {
@@ -93,12 +102,17 @@ public class UpdatedMetaDataTracker {
         }
       }
     }
+    this.needCommitTxn = other.needCommitTxn;
   }
 
   public void set(String replState, String dbName, String tableName, Map <String, String> partSpec)
           throws SemanticException {
     if (dbName == null) {
       throw new SemanticException("db name can not be null");
+    }
+    if (dbName.contains(".") || ((tableName != null)  && tableName.contains("."))) {
+      throw new SemanticException("Invalid DB or table name." + dbName + "::"
+              + ((tableName != null) ? tableName : ""));
     }
     String key = getKey(normalizeIdentifier(dbName), normalizeIdentifier(tableName));
     Integer idx = updateMetaDataMap.get(key);

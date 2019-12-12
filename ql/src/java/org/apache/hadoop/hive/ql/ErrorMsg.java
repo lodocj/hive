@@ -23,9 +23,9 @@ import org.apache.hadoop.hdfs.protocol.DSQuotaExceededException;
 import org.apache.hadoop.hdfs.protocol.NSQuotaExceededException;
 import org.apache.hadoop.hdfs.protocol.UnresolvedPathException;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.ql.ddl.table.AlterTableType;
 import org.apache.hadoop.hive.ql.parse.ASTNode;
 import org.apache.hadoop.hive.ql.parse.ASTNodeOrigin;
-import org.apache.hadoop.hive.ql.plan.AlterTableDesc.AlterTableTypes;
 import org.apache.hadoop.security.AccessControlException;
 
 import java.io.FileNotFoundException;
@@ -93,7 +93,7 @@ public enum ErrorMsg {
   INVALID_MAPINDEX_CONSTANT(10031, "Non-constant expression for map indexes not supported"),
   INVALID_MAPINDEX_TYPE(10032, "MAP key type does not match index expression type"),
   NON_COLLECTION_TYPE(10033, "[] not valid on non-collection types"),
-  SELECT_DISTINCT_WITH_GROUPBY(10034, "SELECT DISTINCT and GROUP BY can not be in the same query"),
+  @Deprecated SELECT_DISTINCT_WITH_GROUPBY(10034, "SELECT DISTINCT and GROUP BY can not be in the same query"),
   COLUMN_REPEATED_IN_PARTITIONING_COLS(10035, "Column repeated in partitioning columns"),
   DUPLICATE_COLUMN_NAMES(10036, "Duplicate column name:"),
   INVALID_BUCKET_NUMBER(10037, "Bucket number should be bigger than zero"),
@@ -214,7 +214,8 @@ public enum ErrorMsg {
   ALTER_COMMAND_FOR_VIEWS(10131, "To alter a view you need to use the ALTER VIEW command."),
   ALTER_COMMAND_FOR_TABLES(10132, "To alter a base table you need to use the ALTER TABLE command."),
   ALTER_VIEW_DISALLOWED_OP(10133, "Cannot use this form of ALTER on a view"),
-  ALTER_TABLE_NON_NATIVE(10134, "ALTER TABLE can only be used for " + AlterTableTypes.nonNativeTableAllowedTypes + " to a non-native table "),
+  ALTER_TABLE_NON_NATIVE(10134, "ALTER TABLE can only be used for " + AlterTableType.NON_NATIVE_TABLE_ALLOWED +
+      " to a non-native table "),
   SORTMERGE_MAPJOIN_FAILED(10135,
       "Sort merge bucketed join could not be performed. " +
       "If you really want to perform the operation, either set " +
@@ -461,7 +462,7 @@ public enum ErrorMsg {
     "Grouping sets size cannot be greater than 64"),
   REBUILD_NO_MATERIALIZED_VIEW(10412, "Rebuild command only valid for materialized views"),
   LOAD_DATA_ACID_FILE(10413,
-      "\"{0}\" was created created by Acid write - it cannot be loaded into anther Acid table",
+      "\"{0}\" was created by Acid write - it cannot be loaded into anther Acid table",
       true),
   ACID_OP_ON_INSERTONLYTRAN_TABLE(10414, "Attempt to do update or delete on table {0} that is " +
     "insert-only transactional", true),
@@ -470,6 +471,11 @@ public enum ErrorMsg {
   RESOURCE_PLAN_ALREADY_EXISTS(10417, "Resource plan {0} already exists", true),
   RESOURCE_PLAN_NOT_EXISTS(10418, "Resource plan {0} does not exist", true),
   INCOMPATIBLE_STRUCT(10419, "Incompatible structs.", true),
+  OBJECTNAME_CONTAINS_DOT(10420, "Table or database name may not contain dot(.) character", true),
+  WITHIN_GROUP_NOT_ALLOWED(10421,
+          "Not an ordered-set aggregate function: {0}. WITHIN GROUP clause is not allowed.", true),
+  WITHIN_GROUP_PARAMETER_MISMATCH(10422,
+          "The number of hypothetical direct arguments ({0}) must match the number of ordering columns ({1})", true),
 
   //========================== 20000 range starts here ========================//
 
@@ -513,6 +519,9 @@ public enum ErrorMsg {
   REPL_LOAD_PATH_NOT_FOUND(20019, "Load path does not exist."),
   REPL_DATABASE_IS_NOT_SOURCE_OF_REPLICATION(20020,
           "Source of replication (repl.source.for) is not set in the database properties."),
+  REPL_INVALID_DB_OR_TABLE_PATTERN(20021,
+          "Invalid pattern for the DB or table name in the replication policy. "
+                  + "It should be a valid regex enclosed within single or double quotes."),
 
   // An exception from runtime that will show the full stack to client
   UNRESOLVED_RT_EXCEPTION(29999, "Runtime Error: {0}", "58004", true),

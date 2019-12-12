@@ -19,19 +19,19 @@ package org.apache.hadoop.hive.ql.lockmgr;
 
 import org.apache.hadoop.hive.common.ValidTxnList;
 import org.apache.hadoop.hive.common.ValidTxnWriteIdList;
-import org.apache.hadoop.hive.common.ValidWriteIdList;
 import org.apache.hadoop.hive.metastore.api.CommitTxnRequest;
 import org.apache.hadoop.hive.metastore.api.LockResponse;
 import org.apache.hadoop.hive.metastore.api.TxnToWriteId;
+import org.apache.hadoop.hive.metastore.api.TxnType;
 import org.apache.hadoop.hive.ql.Context;
-import org.apache.hadoop.hive.ql.Driver.LockedDriverState;
+import org.apache.hadoop.hive.ql.DriverState;
+import org.apache.hadoop.hive.ql.ddl.database.lock.LockDatabaseDesc;
+import org.apache.hadoop.hive.ql.ddl.database.unlock.UnlockDatabaseDesc;
+import org.apache.hadoop.hive.ql.ddl.table.lock.LockTableDesc;
+import org.apache.hadoop.hive.ql.ddl.table.lock.UnlockTableDesc;
 import org.apache.hadoop.hive.ql.QueryPlan;
 import org.apache.hadoop.hive.ql.metadata.Hive;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
-import org.apache.hadoop.hive.ql.plan.LockDatabaseDesc;
-import org.apache.hadoop.hive.ql.plan.LockTableDesc;
-import org.apache.hadoop.hive.ql.plan.UnlockDatabaseDesc;
-import org.apache.hadoop.hive.ql.plan.UnlockTableDesc;
 
 import java.util.List;
 
@@ -50,6 +50,16 @@ public interface HiveTxnManager {
    * @throws LockException if a transaction is already open.
    */
   long openTxn(Context ctx, String user) throws LockException;
+
+ /**
+  * Open a new transaction.
+  * @param ctx Context for this query
+  * @param user Hive user who is opening this transaction.
+  * @param txnType transaction type.
+  * @return The new transaction id
+  * @throws LockException if a transaction is already open.
+  */
+  long openTxn(Context ctx, String user, TxnType txnType) throws LockException;
 
   /**
    * Open a new transaction in target cluster.
@@ -121,10 +131,10 @@ public interface HiveTxnManager {
    * @param plan query plan
    * @param ctx Context for this query
    * @param username name of the user for this query
-   * @param lDrvState the state to inform if the query cancelled or not
+   * @param driverState the state to inform if the query cancelled or not
    * @throws LockException if there is an error getting the locks
    */
-   void acquireLocks(QueryPlan plan, Context ctx, String username, LockedDriverState lDrvState) throws LockException;
+   void acquireLocks(QueryPlan plan, Context ctx, String username, DriverState driverState) throws LockException;
 
   /**
    * Release specified locks.
@@ -178,7 +188,7 @@ public interface HiveTxnManager {
    * {@link ValidTxnWriteIdList} object can be passed as string to the processing
    * tasks for use in the reading the data.  This call will return same results as long as validTxnString
    * passed is same.
-   * @param tableList list of tables (<db_name>.<table_name>) read/written by current transaction.
+   * @param tableList list of tables (&lt;db_name&gt;.&lt;table_name&gt;) read/written by current transaction.
    * @param validTxnList snapshot of valid txns for the current txn
    * @return list of valid table write Ids.
    * @throws LockException

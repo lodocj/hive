@@ -31,6 +31,7 @@ import java.util.Map;
 
 import org.apache.hadoop.hive.serde2.io.DateWritableV2;
 import org.apache.hadoop.hive.serde2.io.TimestampLocalTZWritable;
+import org.apache.hadoop.hive.serde2.io.TimestampWritable;
 import org.apache.hadoop.hive.serde2.io.TimestampWritableV2;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.SettableTimestampLocalTZObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.TimestampLocalTZObjectInspector;
@@ -718,9 +719,11 @@ public final class ObjectInspectorUtils {
       case DATE:
         return ((DateObjectInspector) poi).getPrimitiveWritableObject(o).hashCode();
       case TIMESTAMP:
-        TimestampWritableV2 t = ((TimestampObjectInspector) poi)
-            .getPrimitiveWritableObject(o);
-        return t.hashCode();
+        // Use old timestamp writable hash code for backwards compatibility
+        TimestampWritable ts = new TimestampWritable(
+            java.sql.Timestamp.valueOf(
+                ((TimestampObjectInspector) poi).getPrimitiveWritableObject(o).toString()));
+        return ts.hashCode();
       case TIMESTAMPLOCALTZ:
         TimestampLocalTZWritable tstz = ((TimestampLocalTZObjectInspector) poi).getPrimitiveWritableObject(o);
         return tstz.hashCode();
@@ -942,20 +945,36 @@ public final class ObjectInspectorUtils {
   }
 
   public static int compare(Object[] o1, ObjectInspector[] oi1, Object[] o2,
-                            ObjectInspector[] oi2, boolean[] columnSortOrderIsDesc) {
+      ObjectInspector[] oi2, boolean[] columnSortOrderIsDesc, NullValueOption[] nullSortOrder) {
     assert (o1.length == oi1.length);
     assert (o2.length == oi2.length);
     assert (o1.length == o2.length);
+    assert (o1.length == columnSortOrderIsDesc.length);
+    assert (o1.length == nullSortOrder.length);
 
     for (int i = 0; i < o1.length; i++) {
-      int r = compare(o1[i], oi1[i], o2[i], oi2[i]);
+      int r = compareNull(o1[i], o2[i]);
       if (r != 0) {
-        if (columnSortOrderIsDesc[i]) {
-          return r;
-        } else {
-          return -r;
-        }
+        return nullSortOrder[i] == NullValueOption.MINVALUE ? -r : r;
       }
+
+      if (columnSortOrderIsDesc[i]) {
+        r = compare(o2[i], oi2[i], o1[i], oi1[i]);
+      } else {
+        r = compare(o1[i], oi1[i], o2[i], oi2[i]);
+      }
+      if (r != 0) {
+        return r;
+      }
+    }
+    return 0;
+  }
+
+  public static int compareNull(Object o1, Object o2) {
+    if (o1 == null) {
+      return o2 == null ? 0 : 1;
+    } else if (o2 == null) {
+      return -1;
     }
     return 0;
   }

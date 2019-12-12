@@ -486,7 +486,7 @@ public class BeeLine implements Closeable {
     try {
       return MessageFormat.format(
           new ChoiceFormat(resourceBundle.getString(res)).format(param),
-          new Object[] {new Integer(param)});
+          new Object[] {Integer.valueOf(param)});
     } catch (Exception e) {
       return res + ": " + param;
     }
@@ -515,7 +515,7 @@ public class BeeLine implements Closeable {
 
   protected String locElapsedTime(long milliseconds) {
     if (getOpts().getShowElapsedTime()) {
-      return loc("time-ms", new Object[] {new Double(milliseconds / 1000d)});
+      return loc("time-ms", new Object[] {Double.valueOf(milliseconds / 1000d)});
     }
     return "";
   }
@@ -1203,6 +1203,10 @@ public class BeeLine implements Closeable {
       if (password != null) {
         jdbcConnectionParams.getSessionVars().put(JdbcConnectionParams.AUTH_PASSWD, password);
       }
+      String auth = cl.getOptionValue("a");
+      if (auth != null) {
+        jdbcConnectionParams.getSessionVars().put(JdbcConnectionParams.AUTH_TYPE, auth);
+      }
       mergedConnectionProperties =
           HS2ConnectionFileUtils.mergeUserConnectionPropertiesAndBeelineSite(
               userConnectionProperties, jdbcConnectionParams);
@@ -1320,7 +1324,16 @@ public class BeeLine implements Closeable {
         }
         fileStream = fs.open(path);
       } else {
-        fileStream = new FileInputStream(fileName);
+        org.apache.hadoop.fs.Path path = new org.apache.hadoop.fs.Path(fileName);
+        FileSystem fs;
+        HiveConf conf = new HiveConf();
+        if (!path.toUri().isAbsolute()) {
+          fs = FileSystem.getLocal(conf);
+          path = fs.makeQualified(path);
+        } else {
+          fs = FileSystem.get(path.toUri(), conf);
+        }
+        fileStream = fs.open(path);
       }
       return execute(initializeConsoleReader(fileStream), !getOpts().getForce());
     } catch (Throwable t) {
@@ -2176,7 +2189,7 @@ public class BeeLine implements Closeable {
         new Object[] {
             e.getMessage() == null ? "" : e.getMessage().trim(),
             e.getSQLState() == null ? "" : e.getSQLState().trim(),
-            new Integer(e.getErrorCode())}));
+            Integer.valueOf(e.getErrorCode())}));
 
     if (getOpts().getVerbose()) {
       e.printStackTrace(getErrorStream());

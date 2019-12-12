@@ -45,6 +45,7 @@ import org.apache.hadoop.hive.ql.io.RecordIdentifier;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
+import org.apache.hive.common.util.Ref;
 
 import com.google.common.annotations.VisibleForTesting;
 
@@ -462,8 +463,8 @@ public class OrcRawRecordMerger implements AcidInputFormat.RawReader<OrcStruct>{
          * contents to be in {@link org.apache.hadoop.hive.ql.io.AcidUtils.Directory#getOriginalFiles()}
          */
         //the split is from something other than the 1st file of the logical bucket - compute offset
-        AcidUtils.Directory directoryState
-                = AcidUtils.getAcidState(mergerOptions.getRootPath(), conf, validWriteIdList, false, true);
+        AcidUtils.Directory directoryState = AcidUtils.getAcidState(null, mergerOptions.getRootPath(), conf,
+            validWriteIdList, Ref.from(false), true, null, true);
         for (HadoopShims.HdfsFileStatusWithId f : directoryState.getOriginalFiles()) {
           int bucketIdFromPath = AcidUtils.parseBucketId(f.getFileStatus().getPath());
           if (bucketIdFromPath != bucketId) {
@@ -576,8 +577,8 @@ public class OrcRawRecordMerger implements AcidInputFormat.RawReader<OrcStruct>{
       //when compacting each split needs to process the whole logical bucket
       assert options.getOffset() == 0;
       assert options.getMaxOffset() == Long.MAX_VALUE;
-      AcidUtils.Directory directoryState
-              = AcidUtils.getAcidState(mergerOptions.getRootPath(), conf, validWriteIdList, false, true);
+      AcidUtils.Directory directoryState = AcidUtils.getAcidState(null, mergerOptions.getRootPath(), conf,
+          validWriteIdList, Ref.from(false), true, null, true);
       /**
        * Note that for reading base_x/ or delta_x_x/ with non-acid schema,
        * {@link Options#getRootPath()} is set to base_x/ or delta_x_x/ which causes all it's
@@ -741,10 +742,10 @@ public class OrcRawRecordMerger implements AcidInputFormat.RawReader<OrcStruct>{
       }
     }
     if (rowOffset > 0) {
-      minKey = new RecordIdentifier(0, bucketProperty, rowOffset - 1);
+      minKey = new RecordIdentifier(tfp.syntheticWriteId, bucketProperty, rowOffset - 1);
     }
     if (!isTail) {
-      maxKey = new RecordIdentifier(0, bucketProperty, rowOffset + rowLength - 1);
+      maxKey = new RecordIdentifier(tfp.syntheticWriteId, bucketProperty, rowOffset + rowLength - 1);
     }
     return new KeyInterval(minKey, maxKey);
   }
@@ -1107,6 +1108,8 @@ public class OrcRawRecordMerger implements AcidInputFormat.RawReader<OrcStruct>{
           throw new IllegalStateException(delta + " is not delete delta and is not compacting.");
         }
         ReaderKey key = new ReaderKey();
+        //todo: only need to know isRawFormat if compacting for acid V2 and V2 should normally run
+        //in vectorized mode - i.e. this is not a significant perf overhead vs ParsedDeltaLight
         AcidUtils.ParsedDelta deltaDir = AcidUtils.parsedDelta(delta, delta.getFileSystem(conf));
         if(deltaDir.isRawFormat()) {
           assert !deltaDir.isDeleteDelta() : delta.toString();
@@ -1228,11 +1231,7 @@ public class OrcRawRecordMerger implements AcidInputFormat.RawReader<OrcStruct>{
                 parent);
           }
           else {
-            AcidUtils.ParsedDelta pd = AcidUtils.parsedDelta(parent, AcidUtils.DELTA_PREFIX,
-              parent.getFileSystem(conf));
-            assert pd.getMinWriteId() == pd.getMaxWriteId() :
-              "This a delta with raw non acid schema, must be result of single write, no compaction: "
-                + splitPath;
+            AcidUtils.ParsedDeltaLight pd = AcidUtils.ParsedDeltaLight.parse(parent);
             return new TransactionMetaData(pd.getMinWriteId(), parent, pd.getStatementId());
           }
         }

@@ -36,11 +36,13 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.common.FileUtils;
+import org.apache.hadoop.hive.common.StatsSetupConst;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.metastore.HiveMetaStoreUtils;
 import org.apache.hadoop.hive.metastore.TableType;
 import org.apache.hadoop.hive.metastore.Warehouse;
+import org.apache.hadoop.hive.metastore.api.ColumnStatistics;
 import org.apache.hadoop.hive.metastore.api.CreationMetadata;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.MetaException;
@@ -101,6 +103,7 @@ public class Table implements Serializable {
   private Path path;
 
   private transient HiveStorageHandler storageHandler;
+  private transient StorageHandlerInfo storageHandlerInfo;
 
   private transient TableSpec tableSpec;
 
@@ -109,6 +112,14 @@ public class Table implements Serializable {
   /** Note: This is set only for describe table purposes, it cannot be used to verify whether
    * a materialization is up-to-date or not. */
   private transient Boolean outdatedForRewritingMaterializedView;
+
+  /** Constraint related objects */
+  private transient PrimaryKeyInfo pki;
+  private transient ForeignKeyInfo fki;
+  private transient UniqueConstraint uki;
+  private transient NotNullConstraint nnc;
+  private transient DefaultConstraint dc;
+  private transient CheckConstraint cc;
 
   /**
    * Used only for serialization.
@@ -311,6 +322,14 @@ public class Table implements Serializable {
       throw new RuntimeException(e);
     }
     return storageHandler;
+  }
+
+  public StorageHandlerInfo getStorageHandlerInfo() {
+    return storageHandlerInfo;
+  }
+
+  public void setStorageHandlerInfo(StorageHandlerInfo storageHandlerInfo) {
+    this.storageHandlerInfo = storageHandlerInfo;
   }
 
   final public Class<? extends InputFormat> getInputFormatClass() {
@@ -561,7 +580,7 @@ public class Table implements Serializable {
 
   public void setDataLocation(Path path) {
     this.path = path;
-    tTable.getSd().setLocation(path.toString());
+    tTable.getSd().setLocation(path == null ? null : path.toString());
   }
 
   public void unsetDataLocation() {
@@ -678,7 +697,7 @@ public class Table implements Serializable {
    * Returns a list of all the columns of the table (data columns + partition
    * columns in that order.
    *
-   * @return List<FieldSchema>
+   * @return List&lt;FieldSchema&gt;
    */
   public List<FieldSchema> getAllCols() {
     ArrayList<FieldSchema> f_list = new ArrayList<FieldSchema>();
@@ -916,7 +935,7 @@ public class Table implements Serializable {
   }
 
   /**
-   * Creates a partition name -> value spec map object
+   * Creates a partition name -&gt; value spec map object
    *
    * @param tp
    *          Use the information from this partition.
@@ -1105,5 +1124,73 @@ public class Table implements Serializable {
    * a materialization is up-to-date or not. */
   public Boolean isOutdatedForRewriting() {
     return outdatedForRewritingMaterializedView;
+  }
+
+  /* These are only populated during optimization and describing */
+  public PrimaryKeyInfo getPrimaryKeyInfo() {
+    return pki;
+  }
+
+  public void setPrimaryKeyInfo(PrimaryKeyInfo pki) {
+    this.pki = pki;
+  }
+
+  public ForeignKeyInfo getForeignKeyInfo() {
+    return fki;
+  }
+
+  public void setForeignKeyInfo(ForeignKeyInfo fki) {
+    this.fki = fki;
+  }
+
+  public UniqueConstraint getUniqueKeyInfo() {
+    return uki;
+  }
+
+  public void setUniqueKeyInfo(UniqueConstraint uki) {
+    this.uki = uki;
+  }
+
+  public NotNullConstraint getNotNullConstraint() {
+    return nnc;
+  }
+
+  public void setNotNullConstraint(NotNullConstraint nnc) {
+    this.nnc = nnc;
+  }
+
+  public DefaultConstraint getDefaultConstraint() {
+    return dc;
+  }
+
+  public void setDefaultConstraint(DefaultConstraint dc) {
+    this.dc = dc;
+  }
+
+  public CheckConstraint getCheckConstraint() {
+    return cc;
+  }
+
+  public void setCheckConstraint(CheckConstraint cc) {
+    this.cc = cc;
+  }
+
+
+  public ColumnStatistics getColStats() {
+    return tTable.isSetColStats() ? tTable.getColStats() : null;
+  }
+
+  /**
+   * Setup the table level stats as if the table is new. Used when setting up Table for a new
+   * table or during replication.
+   */
+  public void setStatsStateLikeNewTable() {
+    if (isPartitioned()) {
+      StatsSetupConst.setStatsStateForCreateTable(getParameters(), null,
+              StatsSetupConst.FALSE);
+    } else {
+      StatsSetupConst.setStatsStateForCreateTable(getParameters(),
+              MetaStoreUtils.getColumnNames(getCols()), StatsSetupConst.TRUE);
+    }
   }
 };

@@ -23,7 +23,6 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
@@ -38,6 +37,7 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.cli.Parser;
 import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.hive.common.io.SessionStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.permission.FsPermission;
@@ -46,6 +46,7 @@ import org.apache.hadoop.hive.common.LogUtils;
 import org.apache.hadoop.hive.common.LogUtils.LogInitializationException;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
+import org.apache.hadoop.hive.ql.processors.CommandProcessorException;
 import org.apache.hadoop.hive.ql.processors.DfsProcessor;
 import org.apache.hadoop.hive.ql.processors.SetProcessor;
 import org.apache.hadoop.hive.ql.session.SessionState;
@@ -70,8 +71,8 @@ public class HCatCli {
     CliSessionState ss = new CliSessionState(new HiveConf(SessionState.class));
     ss.in = System.in;
     try {
-      ss.out = new PrintStream(System.out, true, "UTF-8");
-      ss.err = new PrintStream(System.err, true, "UTF-8");
+      ss.out = new SessionStream(System.out, true, "UTF-8");
+      ss.err = new SessionStream(System.err, true, "UTF-8");
     } catch (UnsupportedEncodingException e) {
       System.exit(1);
     }
@@ -281,20 +282,30 @@ public class HCatCli {
     String firstToken = cmd.split("\\s+")[0].trim();
 
     if (firstToken.equalsIgnoreCase("set")) {
-      return new SetProcessor().run(cmd.substring(firstToken.length()).trim()).getResponseCode();
+      try {
+        new SetProcessor().run(cmd.substring(firstToken.length()).trim());
+        return 0;
+      } catch (CommandProcessorException e) {
+        return e.getResponseCode();
+      }
     } else if (firstToken.equalsIgnoreCase("dfs")) {
-      return new DfsProcessor(ss.getConf()).run(cmd.substring(firstToken.length()).trim()).getResponseCode();
+      try {
+        new DfsProcessor(ss.getConf()).run(cmd.substring(firstToken.length()).trim());
+        return 0;
+      } catch (CommandProcessorException e) {
+        return e.getResponseCode();
+      }
     }
 
     HCatDriver driver = new HCatDriver(ss.getConf());
-
-    int ret = driver.run(cmd).getResponseCode();
-
-    if (ret != 0) {
+    try {
+      driver.run(cmd);
+    } catch (CommandProcessorException e) {
       driver.close();
-      sysExit(ss, ret);
+      sysExit(ss, e.getResponseCode());
     }
 
+    int ret = 0;
     ArrayList<String> res = new ArrayList<String>();
     try {
       while (driver.getResults(res)) {

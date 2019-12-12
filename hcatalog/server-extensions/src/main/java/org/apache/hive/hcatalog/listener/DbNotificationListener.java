@@ -35,6 +35,7 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
+import org.apache.hadoop.hive.metastore.DatabaseProduct;
 import org.apache.hadoop.hive.metastore.HiveMetaStore.HMSHandler;
 import org.apache.hadoop.hive.metastore.MetaStoreEventListenerConstants;
 import org.apache.hadoop.hive.metastore.RawStore;
@@ -52,6 +53,7 @@ import org.apache.hadoop.hive.metastore.api.SQLNotNullConstraint;
 import org.apache.hadoop.hive.metastore.api.SQLPrimaryKey;
 import org.apache.hadoop.hive.metastore.api.SQLUniqueConstraint;
 import org.apache.hadoop.hive.metastore.api.Table;
+import org.apache.hadoop.hive.metastore.api.ColumnStatisticsDesc;
 import org.apache.hadoop.hive.metastore.conf.MetastoreConf;
 import org.apache.hadoop.hive.metastore.conf.MetastoreConf.ConfVars;
 import org.apache.hadoop.hive.metastore.events.AddForeignKeyEvent;
@@ -79,6 +81,10 @@ import org.apache.hadoop.hive.metastore.events.AbortTxnEvent;
 import org.apache.hadoop.hive.metastore.events.AllocWriteIdEvent;
 import org.apache.hadoop.hive.metastore.events.ListenerEvent;
 import org.apache.hadoop.hive.metastore.events.AcidWriteEvent;
+import org.apache.hadoop.hive.metastore.events.UpdateTableColumnStatEvent;
+import org.apache.hadoop.hive.metastore.events.DeleteTableColumnStatEvent;
+import org.apache.hadoop.hive.metastore.events.UpdatePartitionColumnStatEvent;
+import org.apache.hadoop.hive.metastore.events.DeletePartitionColumnStatEvent;
 import org.apache.hadoop.hive.metastore.messaging.AbortTxnMessage;
 import org.apache.hadoop.hive.metastore.messaging.AcidWriteMessage;
 import org.apache.hadoop.hive.metastore.messaging.AddForeignKeyMessage;
@@ -107,6 +113,10 @@ import org.apache.hadoop.hive.metastore.messaging.MessageFactory;
 import org.apache.hadoop.hive.metastore.messaging.MessageSerializer;
 import org.apache.hadoop.hive.metastore.messaging.OpenTxnMessage;
 import org.apache.hadoop.hive.metastore.messaging.PartitionFiles;
+import org.apache.hadoop.hive.metastore.messaging.UpdateTableColumnStatMessage;
+import org.apache.hadoop.hive.metastore.messaging.DeleteTableColumnStatMessage;
+import org.apache.hadoop.hive.metastore.messaging.UpdatePartitionColumnStatMessage;
+import org.apache.hadoop.hive.metastore.messaging.DeletePartitionColumnStatMessage;
 import org.apache.hadoop.hive.metastore.tools.SQLGenerator;
 import org.apache.hadoop.hive.metastore.txn.TxnUtils;
 import org.apache.hadoop.hive.metastore.utils.MetaStoreUtils;
@@ -510,7 +520,7 @@ public class DbNotificationListener extends TransactionalMetaStoreEventListener 
     public String next() {
       String result;
       try {
-        result = ReplChangeManager.encodeFileUri(files.get(i), chksums != null ? chksums.get(i) : null,
+        result = ReplChangeManager.encodeFileUri(files.get(i), (chksums != null && !chksums.isEmpty()) ? chksums.get(i) : null,
                 subDirs != null ? subDirs.get(i) : null);
       } catch (IOException e) {
         // File operations failed
@@ -744,6 +754,71 @@ public class DbNotificationListener extends TransactionalMetaStoreEventListener 
     }
   }
 
+  @Override
+  public void onUpdateTableColumnStat(UpdateTableColumnStatEvent updateTableColumnStatEvent) throws MetaException {
+    UpdateTableColumnStatMessage msg = MessageBuilder.getInstance()
+            .buildUpdateTableColumnStatMessage(updateTableColumnStatEvent.getColStats(),
+                    updateTableColumnStatEvent.getTableObj(),
+                    updateTableColumnStatEvent.getTableParameters(),
+                    updateTableColumnStatEvent.getWriteId());
+    NotificationEvent event = new NotificationEvent(0, now(), EventType.UPDATE_TABLE_COLUMN_STAT.toString(),
+                    msgEncoder.getSerializer().serialize(msg));
+    ColumnStatisticsDesc statDesc = updateTableColumnStatEvent.getColStats().getStatsDesc();
+    event.setCatName(statDesc.isSetCatName() ? statDesc.getCatName() : DEFAULT_CATALOG_NAME);
+    event.setDbName(statDesc.getDbName());
+    event.setTableName(statDesc.getTableName());
+    process(event, updateTableColumnStatEvent);
+  }
+
+  @Override
+  public void onDeleteTableColumnStat(DeleteTableColumnStatEvent deleteTableColumnStatEvent) throws MetaException {
+    DeleteTableColumnStatMessage msg = MessageBuilder.getInstance()
+            .buildDeleteTableColumnStatMessage(deleteTableColumnStatEvent.getDBName(),
+                    deleteTableColumnStatEvent.getColName());
+    NotificationEvent event = new NotificationEvent(0, now(), EventType.DELETE_TABLE_COLUMN_STAT.toString(),
+                    msgEncoder.getSerializer().serialize(msg));
+    event.setCatName(deleteTableColumnStatEvent.getCatName());
+    event.setDbName(deleteTableColumnStatEvent.getDBName());
+    event.setTableName(deleteTableColumnStatEvent.getTableName());
+    process(event, deleteTableColumnStatEvent);
+  }
+
+  @Override
+  public void onUpdatePartitionColumnStat(UpdatePartitionColumnStatEvent updatePartColStatEvent) throws MetaException {
+    UpdatePartitionColumnStatMessage msg = MessageBuilder.getInstance()
+            .buildUpdatePartitionColumnStatMessage(updatePartColStatEvent.getPartColStats(),
+                    updatePartColStatEvent.getPartVals(),
+                    updatePartColStatEvent.getPartParameters(),
+                    updatePartColStatEvent.getTableObj(),
+                    updatePartColStatEvent.getWriteId());
+    NotificationEvent event = new NotificationEvent(0, now(), EventType.UPDATE_PARTITION_COLUMN_STAT.toString(),
+                    msgEncoder.getSerializer().serialize(msg));
+    ColumnStatisticsDesc statDesc = updatePartColStatEvent.getPartColStats().getStatsDesc();
+    event.setCatName(statDesc.isSetCatName() ? statDesc.getCatName() : DEFAULT_CATALOG_NAME);
+    event.setDbName(statDesc.getDbName());
+    event.setTableName(statDesc.getTableName());
+    process(event, updatePartColStatEvent);
+  }
+
+  @Override
+  public void onDeletePartitionColumnStat(DeletePartitionColumnStatEvent deletePartColStatEvent) throws MetaException {
+    DeletePartitionColumnStatMessage msg = MessageBuilder.getInstance()
+            .buildDeletePartitionColumnStatMessage(deletePartColStatEvent.getDBName(),
+                    deletePartColStatEvent.getColName(), deletePartColStatEvent.getPartName(),
+                    deletePartColStatEvent.getPartVals());
+    NotificationEvent event = new NotificationEvent(0, now(), EventType.DELETE_PARTITION_COLUMN_STAT.toString(),
+                    msgEncoder.getSerializer().serialize(msg));
+    event.setCatName(deletePartColStatEvent.getCatName());
+    event.setDbName(deletePartColStatEvent.getDBName());
+    event.setTableName(deletePartColStatEvent.getTableName());
+    process(event, deletePartColStatEvent);
+  }
+
+  @Override
+  public boolean doesAddEventsToNotificationLogTable() {
+    return true;
+  }
+
   private int now() {
     long millis = System.currentTimeMillis();
     millis /= 1000;
@@ -923,6 +998,14 @@ public class DbNotificationListener extends TransactionalMetaStoreEventListener 
         stmt.execute("SET @@session.sql_mode=ANSI_QUOTES");
       }
 
+      // Derby doesn't allow FOR UPDATE to lock the row being selected (See https://db.apache
+      // .org/derby/docs/10.1/ref/rrefsqlj31783.html) . So lock the whole table. Since there's
+      // only one row in the table, this shouldn't cause any performance degradation.
+      if (sqlGenerator.getDbProduct() == DatabaseProduct.DERBY) {
+        String lockingQuery = "lock table \"NOTIFICATION_SEQUENCE\" in exclusive mode";
+        LOG.info("Going to execute query <" + lockingQuery + ">");
+        stmt.executeUpdate(lockingQuery);
+      }
       String s = sqlGenerator.addForUpdateClause("select \"NEXT_EVENT_ID\" " +
               " from \"NOTIFICATION_SEQUENCE\"");
       LOG.debug("Going to execute query <" + s + ">");
@@ -1007,6 +1090,7 @@ public class DbNotificationListener extends TransactionalMetaStoreEventListener 
               String.join(", ", params) + ")");
       pst.execute();
 
+      event.setEventId(nextEventId);
       // Set the DB_NOTIFICATION_EVENT_ID for future reference by other listeners.
       if (event.isSetEventId()) {
         listenerEvent.putParameter(
@@ -1068,10 +1152,7 @@ public class DbNotificationListener extends TransactionalMetaStoreEventListener 
         } catch (Exception ex) {
           //catching exceptions here makes sure that the thread doesn't die in case of unexpected
           //exceptions
-          LOG.warn(
-              "Exception received while cleaning notifications. More details can be found in debug mode"
-                  + ex.getMessage());
-          LOG.debug(ex.getMessage(), ex);
+          LOG.warn("Exception received while cleaning notifications: ", ex);
         }
 
         LOG.debug("Cleaner thread done");

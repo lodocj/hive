@@ -73,7 +73,7 @@ public class TestPrimaryToReplicaResourceFunction {
   public void setup() {
     MetaData metadata = new MetaData(null, null, null, null, functionObj);
     Context context =
-        new Context("primaryDb", null, null, null, null, hiveConf, null, null, logger);
+        new Context("primaryDb", null, null, null, hiveConf, null, null, logger);
     when(hiveConf.getVar(HiveConf.ConfVars.REPL_FUNCTIONS_ROOT_DIR))
         .thenReturn("/someBasePath/withADir/");
     function = new PrimaryToReplicaResourceFunction(context, metadata, "replicaDbName");
@@ -92,7 +92,7 @@ public class TestPrimaryToReplicaResourceFunction {
     mockStatic(ReplCopyTask.class);
     Task mock = mock(Task.class);
     when(ReplCopyTask.getLoadCopyTask(any(ReplicationSpec.class), any(Path.class), any(Path.class),
-        any(HiveConf.class), any(Boolean.class), any(Boolean.class))).thenReturn(mock);
+        any(HiveConf.class))).thenReturn(mock);
 
     ResourceUri resourceUri = function.destinationResourceUri(new ResourceUri(ResourceType.JAR,
         "hdfs://localhost:9000/user/someplace/ab.jar#e094828883"));

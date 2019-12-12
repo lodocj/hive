@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -28,8 +28,6 @@ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils;
 
 import java.io.Serializable;
-import java.util.Comparator;
-import java.util.PriorityQueue;
 
 import static org.apache.hadoop.hive.ql.plan.api.OperatorType.TOPNKEY;
 
@@ -40,11 +38,7 @@ public class TopNKeyOperator extends Operator<TopNKeyDesc> implements Serializab
 
   private static final long serialVersionUID = 1L;
 
-  // Maximum number of keys to hold
-  private transient int topN;
-
-  // Priority queue that holds occurred keys
-  private transient PriorityQueue<KeyWrapper> priorityQueue;
+  private transient TopNKeyFilter<KeyWrapper> topNKeyFilter;
 
   private transient KeyWrapper keyWrapper;
 
@@ -57,36 +51,12 @@ public class TopNKeyOperator extends Operator<TopNKeyDesc> implements Serializab
     super(ctx);
   }
 
-  public static class KeyWrapperComparator implements Comparator<KeyWrapper> {
-    private ObjectInspector[] objectInspectors1;
-    private ObjectInspector[] objectInspectors2;
-    private boolean[] columnSortOrderIsDesc;
-
-    public KeyWrapperComparator(ObjectInspector[] objectInspectors1, ObjectInspector[]
-        objectInspectors2, boolean[] columnSortOrderIsDesc) {
-      this.objectInspectors1 = objectInspectors1;
-      this.objectInspectors2 = objectInspectors2;
-      this.columnSortOrderIsDesc = columnSortOrderIsDesc;
-    }
-
-    @Override
-    public int compare(KeyWrapper key1, KeyWrapper key2) {
-      return ObjectInspectorUtils.compare(key1.getKeyArray(), objectInspectors1,
-          key2.getKeyArray(), objectInspectors2, columnSortOrderIsDesc);
-    }
-  }
-
   @Override
   protected void initializeOp(Configuration hconf) throws HiveException {
     super.initializeOp(hconf);
 
-    this.topN = conf.getTopN();
-
     String columnSortOrder = conf.getColumnSortOrder();
-    boolean[] columnSortOrderIsDesc = new boolean[columnSortOrder.length()];
-    for (int i = 0; i < columnSortOrderIsDesc.length; i++) {
-      columnSortOrderIsDesc[i] = (columnSortOrder.charAt(i) == '-');
-    }
+    String nullSortOrder = conf.getNullOrder();
 
     ObjectInspector rowInspector = inputObjInspectors[0];
     ObjectInspector standardObjInspector = ObjectInspectorUtils.getStandardObjectInspector(rowInspector);
@@ -107,8 +77,8 @@ public class TopNKeyOperator extends Operator<TopNKeyDesc> implements Serializab
       standardKeyObjectInspectors[i] = standardKeyFields[i].initialize(standardObjInspector);
     }
 
-    priorityQueue = new PriorityQueue<>(topN + 1, new TopNKeyOperator.KeyWrapperComparator(
-        standardKeyObjectInspectors, standardKeyObjectInspectors, columnSortOrderIsDesc));
+    this.topNKeyFilter = new TopNKeyFilter<>(conf.getTopN(), new KeyWrapperComparator(
+            keyObjectInspectors, standardKeyObjectInspectors, columnSortOrder, nullSortOrder));
 
     KeyWrapperFactory keyWrapperFactory = new KeyWrapperFactory(keyFields, keyObjectInspectors,
         standardKeyObjectInspectors);
@@ -117,28 +87,16 @@ public class TopNKeyOperator extends Operator<TopNKeyDesc> implements Serializab
 
   @Override
   public void process(Object row, int tag) throws HiveException {
-    if (canProcess(row, tag)) {
+    keyWrapper.getNewKey(row, inputObjInspectors[tag]);
+    keyWrapper.setHashKey();
+    if (topNKeyFilter.canForward(keyWrapper)) {
       forward(row, outputObjInspector);
     }
   }
 
-  protected boolean canProcess(Object row, int tag) throws HiveException {
-    keyWrapper.getNewKey(row, inputObjInspectors[tag]);
-    keyWrapper.setHashKey();
-
-    if (!priorityQueue.contains(keyWrapper)) {
-      priorityQueue.offer(keyWrapper.copyKey());
-    }
-    if (priorityQueue.size() > topN) {
-      priorityQueue.poll();
-    }
-
-    return priorityQueue.contains(keyWrapper);
-  }
-
   @Override
   protected final void closeOp(boolean abort) throws HiveException {
-    priorityQueue.clear();
+    topNKeyFilter.clear();
     super.closeOp(abort);
   }
 

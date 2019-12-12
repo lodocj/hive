@@ -47,7 +47,6 @@ import org.apache.calcite.rel.core.Project;
 import org.apache.calcite.rel.core.RelFactories;
 import org.apache.calcite.rel.core.Sort;
 import org.apache.calcite.rel.core.TableScan;
-import org.apache.calcite.rel.metadata.RelColumnOrigin;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
@@ -66,7 +65,6 @@ import org.apache.calcite.sql.fun.SqlStdOperatorTable;
 import org.apache.calcite.tools.RelBuilder;
 import org.apache.calcite.util.ImmutableBitSet;
 import org.apache.calcite.util.Pair;
-import org.apache.commons.lang3.tuple.Triple;
 import org.apache.hadoop.hive.ql.exec.FunctionRegistry;
 import org.apache.hadoop.hive.ql.optimizer.calcite.translator.TypeConverter;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
@@ -497,21 +495,15 @@ public class HiveRelOptUtil extends RelOptUtil {
         mq.getNodeTypes(operator);
     for (Entry<Class<? extends RelNode>, Collection<RelNode>> e :
         nodesBelowNonFkInput.asMap().entrySet()) {
+      if (e.getKey() == Project.class) {
+        // It does not alter cardinality, continue
+        continue;
+      }
+
       if (e.getKey() == TableScan.class) {
         if (e.getValue().size() > 1) {
           // Bail out as we may not have more than one TS on non-FK side
           return true;
-        }
-      } else if (e.getKey() == Project.class) {
-        // We check there is no windowing expression
-        for (RelNode node : e.getValue()) {
-          Project p = (Project) node;
-          for (RexNode expr : p.getChildExps()) {
-            if (expr instanceof RexOver) {
-              // Bail out as it may change cardinality
-              return true;
-            }
-          }
         }
       } else if (e.getKey() == Aggregate.class) {
         // We check there is are not grouping sets
@@ -566,8 +558,16 @@ public class HiveRelOptUtil extends RelOptUtil {
     // 1) Gather all tables from the FK side and the table from the
     // non-FK side
     final Set<RelTableRef> leftTables = mq.getTableReferences(join.getLeft());
-    final Set<RelTableRef> rightTables =
-        Sets.difference(mq.getTableReferences(join), mq.getTableReferences(join.getLeft()));
+    if (leftTables == null) {
+      // Could not infer, bail out
+      return cannotExtract;
+    }
+    final Set<RelTableRef> joinTables = mq.getTableReferences(join);
+    if (joinTables == null) {
+      // Could not infer, bail out
+      return cannotExtract;
+    }
+    final Set<RelTableRef> rightTables = Sets.difference(joinTables, leftTables);
     final Set<RelTableRef> fkTables = join.getLeft() == fkInput ? leftTables : rightTables;
     final Set<RelTableRef> nonFkTables = join.getLeft() == fkInput ? rightTables : leftTables;
 
@@ -741,7 +741,7 @@ public class HiveRelOptUtil extends RelOptUtil {
     final RelNode nonFkInput = leftInputPotentialFK ? join.getRight() : join.getLeft();
     final RewritablePKFKJoinInfo nonRewritable = RewritablePKFKJoinInfo.of(false, null);
 
-    if (joinType != JoinRelType.INNER) {
+    if (joinType != JoinRelType.INNER && !join.isSemiJoin()) {
       // If it is not an inner, we transform it as the metadata
       // providers for expressions do not pull information through
       // outer join (as it would not be correct)
@@ -848,7 +848,7 @@ public class HiveRelOptUtil extends RelOptUtil {
             if (ecT.getEquivalenceClassesMap().containsKey(uniqueKeyColumnRef) &&
                 ecT.getEquivalenceClassesMap().get(uniqueKeyColumnRef).contains(foreignKeyColumnRef)) {
               if (foreignKeyColumnType.isNullable()) {
-                if (joinType == JoinRelType.INNER) {
+                if (joinType == JoinRelType.INNER || join.isSemiJoin()) {
                   // If it is nullable and it is an INNER, we just need a IS NOT NULL filter
                   RexNode originalCondOp = refToRex.get(foreignKeyColumnRef);
                   assert originalCondOp != null;
@@ -1034,4 +1034,19 @@ public class HiveRelOptUtil extends RelOptUtil {
     }
     return null;
   }
+
+  /**
+   * Converts a relational expression to a string, showing information that will aid
+   * to parse the string back.
+   */
+  public static String toJsonString(final RelNode rel) {
+    if (rel == null) {
+      return null;
+    }
+
+    final HiveRelJsonImpl planWriter = new HiveRelJsonImpl();
+    rel.explain(planWriter);
+    return planWriter.asString();
+  }
+
 }
